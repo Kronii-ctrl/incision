@@ -41,7 +41,10 @@
     color:var(--phos);border-bottom:1px solid var(--line);padding:20px 0 7px;text-transform:uppercase}
   .card{background:var(--panel);border:1px solid var(--line);padding:16px 18px;display:flex;
     flex-direction:column;gap:8px;position:relative}
-  .card.locked{opacity:.45}
+  .card.locked{opacity:.8;border-style:dashed}
+  .card.locked h3,.card.locked .desc{opacity:.55}
+  .chips{display:flex;gap:6px;margin:2px 0}
+  .chip{width:26px;height:15px;border:1px solid var(--line);border-radius:2px}
   .card .num{position:absolute;top:12px;right:14px;color:var(--ink-dim);font-size:12px}
   .card h3{margin:0;font-family:var(--sans);text-transform:uppercase;letter-spacing:.1em;
     font-size:18px;color:var(--ink);font-weight:600}
@@ -148,6 +151,9 @@ try{
   if(s&&s.gear)save=Object.assign(defaultSave(),s);
 }catch(e){}
 save.gear=Object.assign(defaultSave().gear,save.gear);
+save.unlocked=save.unlocked||{};
+save.skins=Object.assign({owned:{},equipped:'steel'},save.skins);
+save.skins.owned.steel=true;
 const persist=()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}};
 const $=id=>document.getElementById(id);
 const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
@@ -182,6 +188,34 @@ const GEAR={
     prices:[0,4500,9500],
     fx:['Steady as you are.','Ceiling-rail surgical arm. Press R in theatre; WASD/arrows drive, SHIFT for fine positioning, SPACE operates. Rock-steady: wider cut tolerance, tissue rarely tears.','Faster servos, near-perfect stability. The arm moves like thought.']},
 };
+/* robot arm finishes — palettes only, zero performance difference */
+const RSKINS={
+ steel:{name:'Surgical Steel',price:0,desc:'Factory finish — blue-grey alloy, satin machined.',
+  seg:['#162228','#4c6672','#93aab6','#5a7480','#101a1f'],
+  hub:['#aec2cc','#44606c','#141f24'],
+  rail:'#131f25',slot:'#0a1216',railEdge:'#3c545e',
+  carriage:'#2c3d44',piston:'#c2d2da',pistonBody:'#2c3d44',
+  cable:'#0d1a20',strand:'rgba(70,232,150,.35)',finger:'#9db4c0'},
+ carbon:{name:'Carbon Graphite',price:750,desc:'Matte black composite. Quiet, serious, no glare.',
+  seg:['#080b0d','#22282e','#454e57','#262d34','#060809'],
+  hub:['#565f68','#242b31','#0a0d10'],
+  rail:'#0c1013',slot:'#050708',railEdge:'#272e35',
+  carriage:'#15181c',piston:'#78828c',pistonBody:'#1b2025',
+  cable:'#07090b',strand:'rgba(140,150,160,.35)',finger:'#626c76'},
+ ivory:{name:'Clinical Ivory',price:750,desc:'Ward-white enamel over ceramic joint guards.',
+  seg:['#6e6a60','#c8c3b4','#f2efe6','#b6b0a0','#5c584e'],
+  hub:['#f2efe6','#a8a292','#565248'],
+  rail:'#8e897c',slot:'#5c584e',railEdge:'#b6b0a0',
+  carriage:'#a8a294',piston:'#f2efe6',pistonBody:'#7c7768',
+  cable:'#4a463e',strand:'rgba(90,140,120,.4)',finger:'#d8d3c4'},
+ bronze:{name:'Field Bronze',price:750,desc:'Warm bronze alloy, oiled linkages. An older machine, kept perfect.',
+  seg:['#20140a','#6a4c2a','#bd9660','#785832','#1a1008'],
+  hub:['#caa470','#6a4c2a','#221608'],
+  rail:'#241a10',slot:'#140d06',railEdge:'#5c452a',
+  carriage:'#3a2c1a',piston:'#dcc294',pistonBody:'#3a2c1a',
+  cable:'#160f08',strand:'rgba(220,180,120,.35)',finger:'#c8a26e'},
+};
+const RS=()=>RSKINS[save.skins.equipped]||RSKINS.steel;
 function fx(){const g=save.gear;return{
   cutTol:26+g.scalpel*11, cutBleed:[1,.65,.3][g.scalpel],
   clampR:26+g.clamp*9, drain:[1,.75,.5][g.clamp],
@@ -297,7 +331,7 @@ function renderLevels(){
   LEVELS.forEach((L,i)=>{
     if(i%10===0){const h=document.createElement('div');h.className='ward-head';
       h.textContent=WARDS[L.ward].name;g.appendChild(h);}
-    const unlocked=i===0||save.best[i-1]!==undefined;
+    const unlocked=i===0||save.best[i-1]!==undefined||save.unlocked[i];
     const card=document.createElement('div');card.className='card'+(unlocked?'':' locked');
     const best=save.best[i];
     card.innerHTML=
@@ -307,9 +341,14 @@ function renderLevels(){
       `<span>PAY <b class="money">${fmt$(L.pay)}</b></span><span>TIME <b>${L.time}s</b></span></div>`+
       `<div class="stars">${best!==undefined?'★'.repeat(best)+'☆'.repeat(3-best):''}</div>`+
       `<div class="desc">${L.patient[2]}.</div>`;
-    const b=document.createElement('button');b.className='btn';
-    b.textContent=unlocked?'Open Chart':'Locked';b.disabled=!unlocked;
-    b.onclick=()=>{clickS();openBrief(i);};
+    const b=document.createElement('button');
+    if(unlocked){b.className='btn';b.textContent='Open Chart';
+      b.onclick=()=>{clickS();openBrief(i);};}
+    else{const cost=Math.round(L.pay*.8/10)*10;
+      b.className='btn amber';b.textContent='Skip ahead — '+fmt$(cost);
+      b.disabled=save.money<cost;
+      b.title='Pay the board to schedule this case without clearing the previous one';
+      b.onclick=()=>{save.money-=cost;save.unlocked[i]=true;persist();cashS();renderLevels();};}
     card.appendChild(b);g.appendChild(card);
   });
 }
@@ -329,6 +368,28 @@ function renderShop(){
       b.onclick=()=>{save.money-=G.prices[t+1];save.gear[k]++;persist();cashS();renderShop();};
       card.appendChild(b);}
     g.appendChild(card);
+  });
+  /* robot finishes — cosmetic skins */
+  const hd=document.createElement('div');hd.className='ward-head';
+  hd.textContent='Robot Finishes — cosmetic only, no performance change';
+  g.appendChild(hd);
+  Object.entries(RSKINS).forEach(([k,sk])=>{
+    const owned=save.skins.owned[k],eq=save.skins.equipped===k;
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML=`<div class="tier">Finish${eq?' — equipped':''}</div><h3>${sk.name}</h3>`+
+      `<div class="chips">${[sk.seg[2],sk.seg[1],sk.carriage,sk.piston]
+        .map(c=>`<span class="chip" style="background:${c}"></span>`).join('')}</div>`+
+      `<div class="desc">${sk.desc}</div>`+
+      (save.gear.robot===0?`<div class="desc" style="color:var(--ink-dim)">Requires a robotic arm to see in theatre.</div>`:'');
+    const b=document.createElement('button');
+    if(eq){b.className='btn';b.textContent='Equipped ✓';b.disabled=true;}
+    else if(owned){b.className='btn';b.textContent='Equip';
+      b.onclick=()=>{save.skins.equipped=k;persist();clickS();renderShop();};}
+    else{b.className='btn amber';b.textContent='Buy — '+fmt$(sk.price);
+      b.disabled=save.money<sk.price;
+      b.onclick=()=>{save.money-=sk.price;save.skins.owned[k]=true;
+        save.skins.equipped=k;persist();cashS();renderShop();};}
+    card.appendChild(b);g.appendChild(card);
   });
 }
 
@@ -1645,16 +1706,17 @@ function drawScanFx(){
   ctx.fillText('SIGNAL '+Math.round(sig*100)+'%',mouse.x,mouse.y+58);
 }
 function taperSeg(x1,y1,x2,y2,w1,w2){
+  const sk=RS();
   const dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l;
   const g=ctx.createLinearGradient(x1+nx*w1,y1+ny*w1,x1-nx*w1,y1-ny*w1);
-  g.addColorStop(0,'#162228');g.addColorStop(.3,'#4c6672');
-  g.addColorStop(.48,'#93aab6');g.addColorStop(.62,'#5a7480');g.addColorStop(1,'#101a1f');
+  g.addColorStop(0,sk.seg[0]);g.addColorStop(.3,sk.seg[1]);
+  g.addColorStop(.48,sk.seg[2]);g.addColorStop(.62,sk.seg[3]);g.addColorStop(1,sk.seg[4]);
   ctx.fillStyle=g;
   ctx.beginPath();
   ctx.moveTo(x1+nx*w1/2,y1+ny*w1/2);ctx.lineTo(x2+nx*w2/2,y2+ny*w2/2);
   ctx.lineTo(x2-nx*w2/2,y2-ny*w2/2);ctx.lineTo(x1-nx*w1/2,y1-ny*w1/2);
   ctx.closePath();ctx.fill();
-  ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.strokeStyle=sk.seg[4];ctx.lineWidth=1.5;ctx.stroke();
   /* panel seam */
   ctx.strokeStyle='rgba(10,18,22,.55)';ctx.lineWidth=1;
   ctx.beginPath();
@@ -1662,26 +1724,28 @@ function taperSeg(x1,y1,x2,y2,w1,w2){
   ctx.lineTo(x1+dx*.88+nx*w2*.16,y1+dy*.88+ny*w2*.16);ctx.stroke();
 }
 function hub(x,y,r){
+  const sk=RS();
   const g=ctx.createRadialGradient(x-r*.35,y-r*.35,1,x,y,r);
-  g.addColorStop(0,'#aec2cc');g.addColorStop(.55,'#44606c');g.addColorStop(1,'#141f24');
+  g.addColorStop(0,sk.hub[0]);g.addColorStop(.55,sk.hub[1]);g.addColorStop(1,sk.hub[2]);
   ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
-  ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
-  ctx.strokeStyle='rgba(150,175,186,.5)';ctx.lineWidth=1;
+  ctx.strokeStyle=sk.seg[4];ctx.lineWidth=1.5;ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=1;
   ctx.beginPath();ctx.arc(x,y,r*.62,0,7);ctx.stroke();
-  ctx.fillStyle='#0e181d';ctx.beginPath();ctx.arc(x,y,r*.24,0,7);ctx.fill();
-  for(let a=0;a<4;a++){ctx.fillStyle='#1c2c33';
+  ctx.fillStyle=sk.hub[2];ctx.beginPath();ctx.arc(x,y,r*.24,0,7);ctx.fill();
+  for(let a=0;a<4;a++){ctx.fillStyle=sk.hub[2];
     ctx.beginPath();ctx.arc(x+Math.cos(a*1.57+.78)*r*.78,y+Math.sin(a*1.57+.78)*r*.78,r*.1,0,7);ctx.fill();}
 }
 function drawRobotArm(){
   const ex=mouse.x,ey=Math.max(mouse.y,100);
   const railY=72,L1=250,L2=300;
   const cx=clamp(ex,FX+40,FX+FW-40);
+  const sk=RS();
   /* slotted ceiling rail */
-  ctx.fillStyle='#131f25';ctx.fillRect(FX-12,railY-9,FW+24,18);
-  ctx.fillStyle='#0a1216';
+  ctx.fillStyle=sk.rail;ctx.fillRect(FX-12,railY-9,FW+24,18);
+  ctx.fillStyle=sk.slot;
   for(let x=FX-4;x<FX+FW;x+=26)ctx.fillRect(x,railY-3,14,6);
-  ctx.strokeStyle='#3c545e';ctx.lineWidth=1.5;ctx.strokeRect(FX-12,railY-9,FW+24,18);
-  ctx.strokeStyle='rgba(150,175,186,.35)';ctx.lineWidth=1;
+  ctx.strokeStyle=sk.railEdge;ctx.lineWidth=1.5;ctx.strokeRect(FX-12,railY-9,FW+24,18);
+  ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(FX-12,railY-7);ctx.lineTo(FX+FW+12,railY-7);ctx.stroke();
   /* IK solve */
   const dx=ex-cx,dy=ey-railY;
@@ -1692,11 +1756,11 @@ function drawRobotArm(){
   const elx=cx+Math.cos(th+A*sgn)*L1,ely=railY+Math.sin(th+A*sgn)*L1;
   /* sagging cable run: carriage → elbow → wrist */
   ctx.lineCap='round';
-  ctx.strokeStyle='#0d1a20';ctx.lineWidth=3.5;
+  ctx.strokeStyle=sk.cable;ctx.lineWidth=3.5;
   ctx.beginPath();ctx.moveTo(cx+16,railY+8);
   ctx.quadraticCurveTo((cx+elx)/2,Math.max(railY,ely)+42,elx+8,ely+4);
   ctx.quadraticCurveTo((elx+ex)/2,Math.max(ely,ey)+26,ex+4,ey-14);ctx.stroke();
-  ctx.strokeStyle='rgba(70,232,150,.35)';ctx.lineWidth=1;
+  ctx.strokeStyle=sk.strand;ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(cx+16,railY+8);
   ctx.quadraticCurveTo((cx+elx)/2,Math.max(railY,ely)+42,elx+8,ely+4);
   ctx.quadraticCurveTo((elx+ex)/2,Math.max(ely,ey)+26,ex+4,ey-14);ctx.stroke();
@@ -1708,15 +1772,15 @@ function drawRobotArm(){
   const p2x=cx+(elx-cx)*.74,p2y=railY+4+(ely-railY-4)*.74;
   const ux=elx-cx,uy=ely-railY-4,ul=Math.hypot(ux,uy)||1;
   const pnx=-uy/ul*11,pny=ux/ul*11;
-  ctx.strokeStyle='#c2d2da';ctx.lineWidth=3;
+  ctx.strokeStyle=sk.piston;ctx.lineWidth=3;
   ctx.beginPath();ctx.moveTo(p1x+pnx,p1y+pny);ctx.lineTo(p2x+pnx,p2y+pny);ctx.stroke();
-  ctx.strokeStyle='#2c3d44';ctx.lineWidth=7;
+  ctx.strokeStyle=sk.pistonBody;ctx.lineWidth=7;
   ctx.beginPath();ctx.moveTo(p1x+pnx,p1y+pny);
   ctx.lineTo(p1x+pnx+(p2x-p1x)*.55,p1y+pny+(p2y-p1y)*.55);ctx.stroke();
   /* carriage over the rail */
-  ctx.fillStyle='#2c3d44';ctx.beginPath();ctx.roundRect(cx-26,railY-14,52,28,6);ctx.fill();
-  ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
-  ctx.strokeStyle='rgba(150,175,186,.4)';ctx.lineWidth=1;
+  ctx.fillStyle=sk.carriage;ctx.beginPath();ctx.roundRect(cx-26,railY-14,52,28,6);ctx.fill();
+  ctx.strokeStyle=sk.seg[4];ctx.lineWidth=1.5;ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(cx-22,railY-10);ctx.lineTo(cx+22,railY-10);ctx.stroke();
   /* hazard chevrons */
   ctx.save();ctx.beginPath();ctx.rect(cx-22,railY+6,44,5);ctx.clip();
@@ -1732,15 +1796,15 @@ function drawRobotArm(){
   const wa=Math.atan2(ey-ely,ex-elx);
   ctx.save();ctx.translate(ex,ey);ctx.rotate(wa-Math.PI/2);
   const hg=ctx.createLinearGradient(-11,0,11,0);
-  hg.addColorStop(0,'#182831');hg.addColorStop(.5,'#7e97a4');hg.addColorStop(1,'#141f24');
+  hg.addColorStop(0,sk.seg[0]);hg.addColorStop(.5,sk.seg[2]);hg.addColorStop(1,sk.seg[4]);
   ctx.fillStyle=hg;ctx.beginPath();ctx.roundRect(-10,-30,20,22,5);ctx.fill();
-  ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.strokeStyle=sk.seg[4];ctx.lineWidth=1.5;ctx.stroke();
   ctx.fillStyle=mouse.down?'#f4b942':'#46e896';ctx.fillRect(-6,-27,4,3);
   const open=mouse.down?3:8;
-  ctx.strokeStyle='#9db4c0';ctx.lineWidth=3.5;ctx.lineCap='round';
+  ctx.strokeStyle=sk.finger;ctx.lineWidth=3.5;ctx.lineCap='round';
   ctx.beginPath();ctx.moveTo(-7,-9);ctx.quadraticCurveTo(-open-4,2,-open,10);ctx.stroke();
   ctx.beginPath();ctx.moveTo(7,-9);ctx.quadraticCurveTo(open+4,2,open,10);ctx.stroke();
-  ctx.strokeStyle='#2c3d44';ctx.lineWidth=1.5;
+  ctx.strokeStyle=sk.pistonBody;ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(-7,-9);ctx.quadraticCurveTo(-open-5,2,-open-1,10);ctx.stroke();
   ctx.beginPath();ctx.moveTo(7,-9);ctx.quadraticCurveTo(open+5,2,open+1,10);ctx.stroke();
   ctx.restore();
