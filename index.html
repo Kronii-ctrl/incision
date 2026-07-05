@@ -1,4 +1,5 @@
 <title>INCISION — Operating Theatre</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
   :root{
     --bg:#0a1014; --panel:#101a20; --panel2:#0d1519; --line:#1e3038;
@@ -9,7 +10,17 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden;touch-action:manipulation}
+  input{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    font-family:var(--mono);padding:11px 13px;font-size:14px;letter-spacing:.08em;width:100%}
+  input:focus{outline:none;border-color:var(--phos-dim);box-shadow:0 0 10px rgba(70,232,150,.15)}
+  .field-row{display:flex;flex-direction:column;gap:10px;width:280px}
+  .err{color:#ff5f6b;font-size:12px;letter-spacing:.1em;min-height:16px}
+  .prof-btn{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  #rotate{display:none;position:fixed;inset:0;z-index:99;background:var(--bg);
+    align-items:center;justify-content:center;text-align:center;padding:40px;
+    font-size:15px;letter-spacing:.12em;line-height:2;color:var(--phos)}
+  @media (orientation:portrait) and (pointer:coarse){body.in-or #rotate{display:flex}}
   body::after{content:"";position:fixed;inset:0;pointer-events:none;
     background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px);
     mix-blend-mode:multiply;opacity:.5}
@@ -82,15 +93,41 @@
   }
 </style>
 
-<section id="scr-menu" class="scr on" aria-label="Main menu">
+<div id="rotate">ROTATE YOUR DEVICE<br>the theatre plays in landscape</div>
+
+<section id="scr-login" class="scr on" aria-label="Surgeon login">
+  <div style="height:6vh"></div>
+  <h1 class="title" style="font-size:clamp(38px,6vw,72px)">INCI<em>SION</em></h1>
+  <div class="sub">Staff Entrance — Who's on shift?</div>
+  <div class="rule"></div>
+  <div class="menu-btns" id="prof-list"></div>
+  <div class="field-row" id="pw-row" style="display:none">
+    <input id="pw-in" type="password" placeholder="password" autocomplete="off">
+    <div class="err" id="pw-err"></div>
+    <button class="btn" id="b-login">Log In</button>
+  </div>
+  <div class="rule"></div>
+  <div class="sub" style="letter-spacing:.3em">New Surgeon</div>
+  <div class="field-row" style="margin-top:12px">
+    <input id="np-name" maxlength="14" placeholder="name" autocomplete="off">
+    <input id="np-pass" type="password" placeholder="password (optional)" autocomplete="off">
+    <div class="err" id="np-err"></div>
+    <button class="btn amber" id="b-create">Scrub In</button>
+  </div>
+  <p class="howto">Profiles &amp; passwords protect careers on this device only — saves live in this browser.</p>
+</section>
+
+<section id="scr-menu" class="scr" aria-label="Main menu">
   <div style="height:8vh"></div>
   <h1 class="title">INCI<em>SION</em></h1>
   <div class="sub">Operating Theatre &nbsp;·&nbsp; Night Shift</div>
   <div class="rule"></div>
   <div class="money" id="menu-money" style="font-size:15px;letter-spacing:.15em"></div>
+  <div class="sub" id="menu-prof" style="letter-spacing:.2em;margin:8px 0 2px"></div>
   <div class="menu-btns">
     <button class="btn" id="b-operate">Operate</button>
     <button class="btn amber" id="b-shop">Supply Depot</button>
+    <button class="btn ghost" id="b-switch">Switch Surgeon</button>
     <button class="btn ghost" id="b-wipe">Reset Career</button>
   </div>
   <p class="howto">
@@ -141,21 +178,50 @@
 <script>
 'use strict';
 /* ============================== SAVE ============================== */
-const SAVE_KEY='incision-save-v2';
 const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0}});
 let save=defaultSave();
-try{
-  let s=JSON.parse(localStorage.getItem(SAVE_KEY));
-  if(!s){const o=JSON.parse(localStorage.getItem('incision-save-v1'));
-    if(o&&o.gear)s={money:o.money,gear:o.gear,best:{}};}   /* keep money+gear from v1 */
-  if(s&&s.gear)save=Object.assign(defaultSave(),s);
-}catch(e){}
-save.gear=Object.assign(defaultSave().gear,save.gear);
-save.unlocked=save.unlocked||{};
-save.skins=Object.assign({owned:{},equipped:'steel'},save.skins);
-save.skins.owned.steel=true;
-const persist=()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}};
 const $=id=>document.getElementById(id);
+
+/* ---- surgeon profiles (device-local, password optional) ---- */
+const PROF_KEY='incision-profiles';
+let profiles={list:[],last:null},currentProfile=null;
+try{const p=JSON.parse(localStorage.getItem(PROF_KEY));if(p&&p.list)profiles=p;}catch(e){}
+const saveProfiles=()=>{try{localStorage.setItem(PROF_KEY,JSON.stringify(profiles));}catch(e){}};
+const saveKeyFor=n=>'incision-save-v2:'+n;
+async function hashPw(name,pw){
+  const data=new TextEncoder().encode('incision·'+name+'·'+pw);
+  if(crypto&&crypto.subtle){
+    const h=await crypto.subtle.digest('SHA-256',data);
+    return[...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+  let h=2166136261;for(const b of data){h^=b;h=Math.imul(h,16777619)>>>0;}
+  return'fnv'+h.toString(16);
+}
+function normalizeSave(){
+  save.gear=Object.assign(defaultSave().gear,save.gear);
+  save.unlocked=save.unlocked||{};
+  save.skins=Object.assign({owned:{},equipped:'steel'},save.skins);
+  save.skins.owned.steel=true;
+}
+function loadSaveFor(name){
+  save=defaultSave();
+  try{const s=JSON.parse(localStorage.getItem(saveKeyFor(name)));
+    if(s&&s.gear)save=Object.assign(defaultSave(),s);}catch(e){}
+  normalizeSave();
+}
+const persist=()=>{if(!currentProfile)return;
+  try{localStorage.setItem(saveKeyFor(currentProfile),JSON.stringify(save));}catch(e){}};
+/* one-time migration: pre-profile careers become surgeon "SURGEON" */
+if(profiles.list.length===0){
+  try{
+    let s=JSON.parse(localStorage.getItem('incision-save-v2'));
+    if(!s){const o=JSON.parse(localStorage.getItem('incision-save-v1'));
+      if(o&&o.gear)s={money:o.money,gear:o.gear,best:{}};}
+    if(s&&s.gear){
+      profiles.list.push({name:'SURGEON'});profiles.last='SURGEON';
+      localStorage.setItem(saveKeyFor('SURGEON'),JSON.stringify(s));
+      saveProfiles();}
+  }catch(e){}
+}
 const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const rand=(a,b)=>a+Math.random()*(b-a);
@@ -316,14 +382,60 @@ function flatline(on){const a=ac();if(!a)return;
   if(!on&&flatOsc){try{flatOsc.stop();}catch(e){}flatOsc=null;}}
 
 /* ============================== NAV ============================== */
-const screens=['menu','levels','shop','brief','result','or'];
+const screens=['login','menu','levels','shop','brief','result','or'];
 function show(name){screens.forEach(s=>$('scr-'+s).classList.toggle('on',s===name));
-  if(name==='menu')$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
-  if(name==='levels')renderLevels();if(name==='shop')renderShop();}
+  document.body.classList.toggle('in-or',name==='or');
+  if(name==='menu'){$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
+    $('menu-prof').textContent='SURGEON · '+(currentProfile||'');}
+  if(name==='levels')renderLevels();if(name==='shop')renderShop();
+  if(name==='login')renderLogin();}
 document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{clickS();show(b.dataset.nav);}));
 $('b-operate').onclick=()=>{clickS();show('levels');};
 $('b-shop').onclick=()=>{clickS();show('shop');};
-$('b-wipe').onclick=()=>{if(confirm('Erase career progress?')){save=defaultSave();persist();show('menu');}};
+$('b-switch').onclick=()=>{clickS();currentProfile=null;show('login');};
+$('b-wipe').onclick=()=>{if(confirm('Erase career progress for '+currentProfile+'?')){save=defaultSave();normalizeSave();persist();show('menu');}};
+
+/* ---- login screen ---- */
+let pendingProfile=null;
+function renderLogin(){
+  const list=$('prof-list');list.innerHTML='';
+  $('pw-row').style.display='none';$('pw-err').textContent='';$('pw-in').value='';
+  $('np-err').textContent='';pendingProfile=null;
+  if(profiles.list.length===0){
+    const d=document.createElement('div');d.className='desc';
+    d.style.textAlign='center';d.textContent='No surgeons on file. Scrub in below.';
+    list.appendChild(d);return;}
+  profiles.list.forEach(pr=>{
+    const b=document.createElement('button');b.className='btn prof-btn';
+    b.innerHTML=`<span>${pr.name}</span><span style="color:var(--ink-dim)">${pr.hash?'🔒':''}</span>`;
+    b.onclick=()=>{clickS();
+      if(!pr.hash){loginAs(pr.name);return;}
+      pendingProfile=pr;$('pw-row').style.display='flex';
+      $('pw-err').textContent='';$('pw-in').value='';$('pw-in').focus();};
+    list.appendChild(b);});
+}
+function loginAs(name){
+  currentProfile=name;profiles.last=name;saveProfiles();
+  loadSaveFor(name);show('menu');
+}
+$('b-login').onclick=async()=>{
+  if(!pendingProfile)return;
+  const h=await hashPw(pendingProfile.name,$('pw-in').value);
+  if(h===pendingProfile.hash){clickS();loginAs(pendingProfile.name);}
+  else{$('pw-err').textContent='Wrong password. The board is watching.';$('pw-in').value='';}
+};
+$('pw-in').addEventListener('keydown',e=>{if(e.key==='Enter')$('b-login').click();});
+$('b-create').onclick=async()=>{
+  const name=$('np-name').value.trim().toUpperCase().replace(/[^A-Z0-9 .\-']/g,'');
+  if(!name){$('np-err').textContent='Name required.';return;}
+  if(profiles.list.some(p=>p.name===name)){$('np-err').textContent='That surgeon already exists.';return;}
+  const pw=$('np-pass').value;
+  const pr={name};
+  if(pw)pr.hash=await hashPw(name,pw);
+  profiles.list.push(pr);saveProfiles();
+  $('np-name').value='';$('np-pass').value='';
+  cashS();loginAs(name);
+};
 
 function renderLevels(){
   $('lv-money').textContent=fmt$(save.money);
@@ -424,12 +536,45 @@ const DISH={x:1152,y:492,rx:86,ry:52};      // instrument dish
 let mouse={x:640,y:360,down:false,px:640,py:360};
 function toGame(e){const r=cv.getBoundingClientRect();
   return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
-cv.addEventListener('pointerdown',e=>{if(S&&S.robot)return;
-  cv.setPointerCapture(e.pointerId);const p=toGame(e);
-  mouse.x=p.x;mouse.y=p.y;mouse.down=true;ac();onDown(p.x,p.y);});
-cv.addEventListener('pointermove',e=>{if(S&&S.robot)return;
+const TOUCH=navigator.maxTouchPoints>0||'ontouchstart' in window;
+const DPAD={x:112,y:498,r:64},ACTB={x:1206,y:596,r:44};
+const activePtrs={};
+function updJoy(p){
+  const dx=(p.x-DPAD.x)/DPAD.r,dy=(p.y-DPAD.y)/DPAD.r;
+  const l=Math.hypot(dx,dy),k=l>1?1/l:1;
+  if(S)S.joy={x:dx*k,y:dy*k};
+}
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);const p=toGame(e);ac();
+  if(S&&S.robot){
+    if(p.x<136&&p.y>660){toggleRobot();return;}
+    if(p.y>652){const i=Math.floor((p.x-140)/100);if(i>=0&&i<10)selectTool(i);return;}
+    if(S.defib){tryShock();return;}
+    if(TOUCH&&dist(p.x,p.y,DPAD.x,DPAD.y)<DPAD.r+28){
+      activePtrs[e.pointerId]={t:'joy'};updJoy(p);return;}
+    if(TOUCH&&dist(p.x,p.y,ACTB.x,ACTB.y)<ACTB.r+16){
+      activePtrs[e.pointerId]={t:'act'};
+      if(!mouse.down){mouse.down=true;onDown(mouse.x,mouse.y);}return;}
+    return;
+  }
+  mouse.x=p.x;mouse.y=p.y;mouse.down=true;onDown(p.x,p.y);
+});
+cv.addEventListener('pointermove',e=>{
+  const a=activePtrs[e.pointerId];
+  if(a&&a.t==='joy'){updJoy(toGame(e));return;}
+  if(S&&S.robot)return;
   const p=toGame(e);mouse.x=p.x;mouse.y=p.y;});
-cv.addEventListener('pointerup',()=>{if(S&&S.robot)return;mouse.down=false;onUp();});
+function onPtrUp(e){
+  const a=activePtrs[e.pointerId];
+  if(a){delete activePtrs[e.pointerId];
+    if(a.t==='joy'){if(S)S.joy=null;}
+    else if(a.t==='act'){mouse.down=false;onUp();}
+    return;}
+  if(S&&S.robot)return;
+  mouse.down=false;onUp();
+}
+cv.addEventListener('pointerup',onPtrUp);
+cv.addEventListener('pointercancel',onPtrUp);
 const KEYS={};
 addEventListener('keydown',e=>{
   if(!$('scr-or').classList.contains('on'))return;
@@ -440,10 +585,7 @@ addEventListener('keydown',e=>{
   if(e.key===' '){
     if(S&&S.defib)tryShock();
     else if(S&&S.robot&&!mouse.down){mouse.down=true;ac();onDown(mouse.x,mouse.y);}}
-  if((e.key==='r'||e.key==='R')&&S&&!S.dead&&!S.done){
-    if(save.gear.robot>0){S.robot=!S.robot;mouse.down=false;onUp();clickS();
-      say(S.robot?'ROBOTIC ARM ENGAGED — WASD/arrows move, SPACE operates':'Manual control restored',3);}
-    else say('No robotic arm installed — see the Supply Depot',2.5);}
+  if(e.key==='r'||e.key==='R')toggleRobot();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
   if(e.key==='Escape')abortSurgery();
 });
@@ -451,6 +593,14 @@ addEventListener('keyup',e=>{
   KEYS[e.key.toLowerCase()]=false;
   if(e.key===' '&&S&&S.robot&&mouse.down){mouse.down=false;onUp();}
 });
+function toggleRobot(){
+  if(!S||S.dead||S.done)return;
+  if(save.gear.robot<1){say('No robotic arm installed — see the Supply Depot',2.5);return;}
+  S.robot=!S.robot;S.joy=null;mouse.down=false;onUp();clickS();
+  say(S.robot?(TOUCH?'ROBOTIC ARM ENGAGED — left pad moves, ACT operates'
+    :'ROBOTIC ARM ENGAGED — WASD/arrows move, SHIFT fine, SPACE operates')
+    :'Manual control restored',3);
+}
 
 /* incision path — rebuilt per operation from the level's pathSpec */
 let PATHP=[];
@@ -575,7 +725,7 @@ function startSurgery(idx,mod){
      alert:null,defib:null,evts:evtsFilter(evts),handled:0,missed:0,
      bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1),
      tearV:F.tearV*((mod&&mod.tear)||1),
-     shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,
+     shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
@@ -649,6 +799,8 @@ function onDown(x,y){
   /* HUD buttons */
   if(S.defib){tryShock();return;}
   if(x>580&&x<710&&y>12&&y<50){buyTime();return;}
+  /* robot toggle (tap target, bottom-left) */
+  if(save.gear.robot>0&&x<136&&y>660){toggleRobot();return;}
   /* tool tray */
   if(y>652){const i=Math.floor((x-140)/100);if(i>=0&&i<10)selectTool(i);return;}
   const st=S.step,tool=TOOLS[S.tool].id;
@@ -752,16 +904,17 @@ function loop(now){
 function update(dt){
   S.t+=dt;S.msgT-=dt;S.shake=Math.max(0,S.shake-dt*2);
   S.clampT=Math.max(0,S.clampT-dt);S.injT=Math.max(0,S.injT-dt);
-  /* robotic arm drive — ramped acceleration, SHIFT = fine positioning */
+  /* robotic arm drive — ramped acceleration; SHIFT or gentle stick tilt = fine */
   if(S.robot&&!S.dead&&!S.done){
-    const vx=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
-    const vy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
-    if(vx||vy){
+    let vx=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
+    let vy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
+    if(S.joy){vx+=S.joy.x;vy+=S.joy.y;}
+    const l=Math.hypot(vx,vy);
+    if(l>.22){
       S.robHeld=(S.robHeld||0)+dt;
       const ramp=.30+.70*Math.min(1,S.robHeld/.45);
       const fine=KEYS['shift']?.24:1;
-      const sp=S.F.robotSpeed*ramp*fine;
-      const l=Math.hypot(vx,vy);
+      const sp=S.F.robotSpeed*ramp*fine*Math.min(1,l);
       mouse.x=clamp(mouse.x+vx/l*sp*dt,14,W-14);
       mouse.y=clamp(mouse.y+vy/l*sp*dt,66,H-8);
     }else S.robHeld=0;
@@ -1057,6 +1210,7 @@ function draw(){
   drawMonitor();
   drawHUD();
   drawTray();
+  if(S.robot&&TOUCH)drawTouchUI();
   if(S.defib)drawDefib();
   if(S.dead)drawDeath();
   drawCursor();
@@ -1460,14 +1614,36 @@ function drawTray(){
     ctx.fillText(tl.name,x+40,y+25);
     ctx.fillStyle='#3d5a4e';ctx.fillText(i===9?'[0]':'['+(i+1)+']',x+40,y+40);
   });
-  /* robot mode indicator */
+  /* robot mode indicator / touch toggle */
   if(save.gear.robot>0){
     ctx.textAlign='left';ctx.font='9px '+mono;
     ctx.fillStyle=S.robot?'#f4b942':'#3d5a4e';
-    ctx.fillText(S.robot?'◉ ROBOT — WASD MOVE · SHIFT FINE · SPACE ACT · R MANUAL':'○ [R] ROBOTIC ARM',12,676);
-    if(S.robot){ctx.fillStyle='#7fa192';
+    if(TOUCH)ctx.fillText(S.robot?'◉ ROBOT (TAP: OFF)':'○ TAP: ROBOT ARM',12,676);
+    else ctx.fillText(S.robot?'◉ ROBOT — WASD MOVE · SHIFT FINE · SPACE ACT · R MANUAL':'○ [R] ROBOTIC ARM',12,676);
+    if(S.robot&&!TOUCH){ctx.fillStyle='#7fa192';
       ctx.fillText('KEYS 1-0 SWITCH TOOLS',12,692);}
   }
+}
+function drawTouchUI(){
+  const mono=getComputedStyle(document.body).fontFamily;
+  /* virtual stick */
+  ctx.strokeStyle='rgba(70,232,150,.4)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(DPAD.x,DPAD.y,DPAD.r,0,7);ctx.stroke();
+  ctx.strokeStyle='rgba(70,232,150,.18)';
+  ctx.beginPath();
+  ctx.moveTo(DPAD.x-DPAD.r+8,DPAD.y);ctx.lineTo(DPAD.x+DPAD.r-8,DPAD.y);
+  ctx.moveTo(DPAD.x,DPAD.y-DPAD.r+8);ctx.lineTo(DPAD.x,DPAD.y+DPAD.r-8);ctx.stroke();
+  const j=S.joy||{x:0,y:0};
+  ctx.fillStyle=S.joy?'rgba(70,232,150,.5)':'rgba(70,232,150,.22)';
+  ctx.beginPath();ctx.arc(DPAD.x+j.x*DPAD.r*.62,DPAD.y+j.y*DPAD.r*.62,20,0,7);ctx.fill();
+  ctx.textAlign='center';ctx.fillStyle='#3d5a4e';ctx.font='9px '+mono;
+  ctx.fillText('MOVE',DPAD.x,DPAD.y+DPAD.r+16);
+  /* ACT button */
+  ctx.fillStyle=mouse.down?'rgba(244,185,66,.3)':'rgba(70,232,150,.12)';
+  ctx.beginPath();ctx.arc(ACTB.x,ACTB.y,ACTB.r,0,7);ctx.fill();
+  ctx.strokeStyle=mouse.down?'#f4b942':'rgba(70,232,150,.5)';ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle=mouse.down?'#f4b942':'#46e896';ctx.font='700 13px '+mono;
+  ctx.fillText('ACT',ACTB.x,ACTB.y+4);
 }
 function neededTool(){
   if(!S.step)return null;
@@ -1866,6 +2042,10 @@ function drawDeath(){
   ctx.fillText('Time of death: '+new Date().toLocaleTimeString(),640,376);
 }
 
-/* init */
-show('menu');
+/* init — straight to the last surgeon if they have no password */
+(function boot(){
+  const last=profiles.list.find(p=>p.name===profiles.last);
+  if(last&&!last.hash){loginAs(last.name);return;}
+  show('login');
+})();
 </script>
