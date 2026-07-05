@@ -91,10 +91,12 @@
     <button class="btn ghost" id="b-wipe">Reset Career</button>
   </div>
   <p class="howto">
-    Select instruments with the <b>tray</b> or keys <b>1–8</b> · follow the guide line with the
-    <b>scalpel</b> · <b>clamp</b> bleeders fast · extract with <b>forceps</b> — slow and steady,
-    tissue tears · <b>drill</b> bone on ortho cases · <b>suture</b> to close · watch the monitor:
-    complications strike without warning · short on time? buy more, mid-operation · <b>M</b> toggles sound
+    Select instruments with the <b>tray</b> or keys <b>1–0</b> · scan with the <b>ultrasound</b>,
+    follow the guide line with the <b>scalpel</b> · <b>clamp</b> bleeders fast · <b>retract</b> for
+    exposure · extract with <b>forceps</b> — slow and steady, tissue tears · <b>drill</b> bone on
+    ortho cases · <b>suture</b> to close · complications strike without warning · buy time
+    mid-operation · own a <b>robotic arm</b>? press <b>R</b>, drive with WASD, act with SPACE ·
+    <b>M</b> toggles sound
   </p>
 </section>
 
@@ -137,7 +139,7 @@
 'use strict';
 /* ============================== SAVE ============================== */
 const SAVE_KEY='incision-save-v2';
-const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0}});
+const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0}});
 let save=defaultSave();
 try{
   let s=JSON.parse(localStorage.getItem(SAVE_KEY));
@@ -145,6 +147,7 @@ try{
     if(o&&o.gear)s={money:o.money,gear:o.gear,best:{}};}   /* keep money+gear from v1 */
   if(s&&s.gear)save=Object.assign(defaultSave(),s);
 }catch(e){}
+save.gear=Object.assign(defaultSave().gear,save.gear);
 const persist=()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}};
 const $=id=>document.getElementById(id);
 const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
@@ -175,6 +178,9 @@ const GEAR={
   contract:{label:'OR Contract',tiers:['Standard Slot','Extended Slot','Priority Theatre'],
     prices:[0,800,2600],
     fx:['Scheduled time only.','+30s on every operation.','+60s on every operation.']},
+  robot:{label:'Robotics',tiers:['Human Hands','Assist Arm MK-I','Neurolink Arm'],
+    prices:[0,4500,9500],
+    fx:['Steady as you are.','Ceiling-rail surgical arm. Press R in theatre; drive with WASD/arrows, SPACE operates. Rock-steady: wider cut tolerance, tissue rarely tears.','Faster servos, near-perfect stability. The arm moves like thought.']},
 };
 function fx(){const g=save.gear;return{
   cutTol:26+g.scalpel*11, cutBleed:[1,.65,.3][g.scalpel],
@@ -183,7 +189,8 @@ function fx(){const g=save.gear;return{
   stitchT:[1.0,.65,.12][g.suture],
   cautT:[1.5,.95,.25][g.cautery],
   evtWin:[8,11,14][g.monitor],
-  extraTime:[0,30,60][g.contract]};}
+  extraTime:[0,30,60][g.contract],
+  robotSpeed:[0,360,540][g.robot]};}
 
 /* ============================== LEVELS ============================== */
 const SITES={
@@ -198,25 +205,25 @@ const SITES={
 };
 const T={
  lac:  {name:'Laceration Repair',site:'forearm',preCut:true,mid:[],cond:'Deep laceration, edges ragged'},
- shard:{name:'Foreign Body Removal',site:'forearm',mid:[['extract','shard']],cond:'Embedded glass fragment'},
+ shard:{name:'Foreign Body Removal',site:'forearm',pre:[['scan']],mid:[['extract','shard']],cond:'Embedded glass fragment'},
  absc: {name:'Abscess Drainage',site:'thigh',mid:[['irrigate'],['cauterize',2]],cond:'Fluctuant abscess, febrile'},
  cystN:{name:'Cyst Excision',site:'neck',mid:[['cauterize',2],['extract','cyst']],cond:'Sebaceous cyst, recurrent'},
- bullet:{name:'Bullet Extraction',site:'abdomen',mid:[['extract','bullet'],['cauterize',2]],cond:'GSW, projectile retained'},
- spleen:{name:'Splenectomy',site:'abdomen',fastBleed:1.4,mid:[['extract','spleen'],['cauterize',3]],cond:'Blunt trauma, hemoperitoneum'},
- liver:{name:'Liver Repair',site:'abdomen',fastBleed:1.3,mid:[['cauterize',4],['extract','liver']],cond:'Hepatic laceration, grade III'},
+ bullet:{name:'Bullet Extraction',site:'abdomen',pre:[['scan']],mid:[['extract','bullet'],['cauterize',2]],cond:'GSW, projectile retained'},
+ spleen:{name:'Splenectomy',site:'abdomen',fastBleed:1.4,mid:[['retract'],['extract','spleen'],['cauterize',3]],cond:'Blunt trauma, hemoperitoneum'},
+ liver:{name:'Liver Repair',site:'abdomen',fastBleed:1.3,mid:[['retract'],['cauterize',4],['extract','liver']],cond:'Hepatic laceration, grade III'},
  appy: {name:'Appendectomy',site:'abdomen',mid:[['cauterize',2],['extract','appendix']],cond:'Acute appendicitis, WBC elevated'},
  gall: {name:'Gallstone Removal',site:'abdomen',mid:[['stones',4]],cond:'Cholelithiasis, recurrent colic'},
  tumor:{name:'Tumor Resection',site:'abdomen',mid:[['inject',2],['cauterize',3],['extract','tumor']],cond:'Encapsulated mass, 6cm'},
  thyro:{name:'Thyroidectomy',site:'neck',mid:[['inject',1],['extract','thyroid'],['cauterize',2]],cond:'Toxic goiter, compressive'},
- kidT: {name:'Kidney Transplant',site:'back',mid:[['extract','kidney'],['place','kidney']],cond:'End-stage renal disease, matched donor'},
+ kidT: {name:'Kidney Transplant',site:'back',mid:[['retract'],['extract','kidney'],['place','kidney']],cond:'End-stage renal disease, matched donor'},
  disc: {name:'Disc Decompression',site:'back',interior:'bone',mid:[['drill',2],['extract','disc']],cond:'Herniated disc, cord compression'},
  pin:  {name:'Fracture Fixation',site:'calf',interior:'bone',mid:[['drill',3],['place','plate']],cond:'Comminuted tibial fracture'},
  hip:  {name:'Hardware Removal',site:'thigh',interior:'bone',mid:[['drill',2],['extract','plate']],cond:'Loosened femoral plate'},
  cranio:{name:'Craniotomy',site:'scalp',interior:'bone',mid:[['drill',3],['extract','clot']],cond:'Subdural hematoma, midline shift'},
  pace: {name:'Pacemaker Implant',site:'chest',mid:[['inject',1],['place','pacemaker']],cond:'Third-degree heart block'},
- lung: {name:'Lung Lobectomy',site:'chest',fastBleed:1.3,mid:[['cauterize',3],['extract','lung']],cond:'Lobar carcinoma, upper lobe'},
+ lung: {name:'Lung Lobectomy',site:'chest',fastBleed:1.3,mid:[['retract'],['cauterize',3],['extract','lung']],cond:'Lobar carcinoma, upper lobe'},
  aorta:{name:'Aortic Repair',site:'chest',fastBleed:1.5,mid:[['cauterize',4],['inject',1]],cond:'Aneurysm, actively leaking'},
- bypass:{name:'Coronary Bypass',site:'chest',organ:'heart',mid:[['cauterize',3],['place','graft']],cond:'Triple-vessel coronary disease'},
+ bypass:{name:'Coronary Bypass',site:'chest',organ:'heart',mid:[['retract'],['cauterize',3],['place','graft']],cond:'Triple-vessel coronary disease'},
  valve:{name:'Valve Replacement',site:'chest',organ:'heart',mid:[['extract','valve'],['place','valve']],cond:'Critical aortic stenosis'},
 };
 const WARDS=[
@@ -239,11 +246,11 @@ WARDS.forEach((w,wi)=>{w.ops.forEach((k,oi)=>{
     name:t.name, ward:wi, site:st.label,
     patient:[FIRST[(i*11)%20][0]+'. '+LAST[(i*7)%24], 18+((i*13)%59), t.cond],
     diff:wi+1,
-    time:Math.round(135+t.mid.length*28+(2+Math.floor(i/8))*6+(4+Math.floor(i/7))*4+wi*12-i*0.9),
+    time:Math.round(135+(t.mid.length+(t.pre?t.pre.length:0))*28+(2+Math.floor(i/8))*6+(4+Math.floor(i/7))*4+wi*12-i*0.9),
     pay:Math.round((300+i*115)/10)*10,
     preCut:t.preCut, bleeders:Math.min(8,2+Math.floor(i/8)),
     stitches:Math.min(11,4+Math.floor(i/7)),
-    mid:t.mid, events:Math.min(4,Math.floor((i+3)/10)),
+    mid:t.mid, pre:t.pre||[], events:Math.min(4,Math.floor((i+3)/10)),
     organ:t.organ||null, fastBleed:t.fastBleed, interior:t.interior||'tissue',
     tone:(i*3)%5,
     pathSpec:{x0:cx-Math.cos(ang)*len/2, y0:cy-Math.sin(ang)*len/2,
@@ -356,16 +363,32 @@ const DISH={x:1152,y:492,rx:86,ry:52};      // instrument dish
 let mouse={x:640,y:360,down:false,px:640,py:360};
 function toGame(e){const r=cv.getBoundingClientRect();
   return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
-cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);const p=toGame(e);
+cv.addEventListener('pointerdown',e=>{if(S&&S.robot)return;
+  cv.setPointerCapture(e.pointerId);const p=toGame(e);
   mouse.x=p.x;mouse.y=p.y;mouse.down=true;ac();onDown(p.x,p.y);});
-cv.addEventListener('pointermove',e=>{const p=toGame(e);mouse.x=p.x;mouse.y=p.y;});
-cv.addEventListener('pointerup',()=>{mouse.down=false;onUp();});
+cv.addEventListener('pointermove',e=>{if(S&&S.robot)return;
+  const p=toGame(e);mouse.x=p.x;mouse.y=p.y;});
+cv.addEventListener('pointerup',()=>{if(S&&S.robot)return;mouse.down=false;onUp();});
+const KEYS={};
 addEventListener('keydown',e=>{
   if(!$('scr-or').classList.contains('on'))return;
-  if(e.key>='1'&&e.key<='8')selectTool(+e.key-1);
-  if(e.key===' '&&S&&S.defib){e.preventDefault();tryShock();}
+  KEYS[e.key.toLowerCase()]=true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
+  if(e.key>='1'&&e.key<='9')selectTool(+e.key-1);
+  if(e.key==='0')selectTool(9);
+  if(e.key===' '){
+    if(S&&S.defib)tryShock();
+    else if(S&&S.robot&&!mouse.down){mouse.down=true;ac();onDown(mouse.x,mouse.y);}}
+  if((e.key==='r'||e.key==='R')&&S&&!S.dead&&!S.done){
+    if(save.gear.robot>0){S.robot=!S.robot;mouse.down=false;onUp();clickS();
+      say(S.robot?'ROBOTIC ARM ENGAGED — WASD/arrows move, SPACE operates':'Manual control restored',3);}
+    else say('No robotic arm installed — see the Supply Depot',2.5);}
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
   if(e.key==='Escape')abortSurgery();
+});
+addEventListener('keyup',e=>{
+  KEYS[e.key.toLowerCase()]=false;
+  if(e.key===' '&&S&&S.robot&&mouse.down){mouse.down=false;onUp();}
 });
 
 /* incision path — rebuilt per operation from the level's pathSpec */
@@ -450,14 +473,16 @@ const swabCx=swabCv.getContext('2d');
 
 /* ============================== TOOLS ============================== */
 const TOOLS=[
- {id:'swab',   name:'ANTISEPTIC'},
- {id:'scalpel',name:'SCALPEL'},
- {id:'clamp',  name:'HEMOSTAT'},
- {id:'forceps',name:'FORCEPS'},
- {id:'cautery',name:'CAUTERY'},
- {id:'drill',  name:'BONE DRILL'},
- {id:'suture', name:'SUTURE'},
- {id:'syringe',name:'SYRINGE'},
+ {id:'swab',     name:'ANTISEPTIC'},
+ {id:'scalpel',  name:'SCALPEL'},
+ {id:'clamp',    name:'HEMOSTAT'},
+ {id:'forceps',  name:'FORCEPS'},
+ {id:'retractor',name:'RETRACTOR'},
+ {id:'cautery',  name:'CAUTERY'},
+ {id:'drill',    name:'BONE DRILL'},
+ {id:'suture',   name:'SUTURE'},
+ {id:'syringe',  name:'SYRINGE'},
+ {id:'probe',    name:'ULTRASOUND'},
 ];
 function selectTool(i){if(S&&!S.done){S.tool=i;clickS();}}
 
@@ -465,6 +490,7 @@ function selectTool(i){if(S&&!S.done){S.tool=i;clickS();}}
 let S=null,rafId=0,lastT=0;
 function buildSteps(L){
   const s=[{t:'swab'}];
+  (L.pre||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
   if(!L.preCut)s.push({t:'incise'});
   s.push({t:'clamp'});
   (L.mid||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
@@ -488,7 +514,7 @@ function startSurgery(idx,mod){
      alert:null,defib:null,evts:evtsFilter(evts),handled:0,missed:0,
      bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1),
      tearV:F.tearV*((mod&&mod.tear)||1),
-     shake:0,organ:null,heartPh:0,cutBloodT:0,
+     shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
@@ -510,6 +536,11 @@ function nextStep(){
   switch(st.t){
     case 'swab':{st.cells=new Set();st.need=110;
       say('Prep the field — scrub antiseptic over the surgical site',4);break;}
+    case 'scan':{const p=pathPt(rand(.3,.7));
+      st.tx=p.x+rand(-30,30);st.ty=p.y+rand(-20,20);st.prog=0;st.sig=0;
+      say('Locate the object — sweep the ultrasound probe, follow the signal',4);break;}
+    case 'retract':{st.prog=0;st.grabbed=false;st.done=false;
+      say('Exposure — hook the retractor on the wound and pull it wide',4);break;}
     case 'incise':{st.cp=0;st.cutting=false;st.dev=0;st.devN=0;st.strays=0;
       say('Take the scalpel — follow the guide line, one steady draw',4);break;}
     case 'clamp':{const n=L.bleeders;
@@ -558,15 +589,16 @@ function onDown(x,y){
   if(S.defib){tryShock();return;}
   if(x>580&&x<710&&y>12&&y<50){buyTime();return;}
   /* tool tray */
-  if(y>652){const i=Math.floor((x-190)/112);if(i>=0&&i<8)selectTool(i);return;}
+  if(y>652){const i=Math.floor((x-140)/100);if(i>=0&&i<10)selectTool(i);return;}
   const st=S.step,tool=TOOLS[S.tool].id;
   /* alert: bp injection */
   if(S.alert&&S.alert.type==='bp'&&tool==='syringe'&&inField(x,y)){
-    resolveAlert(true);say('Stabilizer in. Pressure recovering.',3);blip(600,.2,.08,'sine');return;}
+    resolveAlert(true);S.injT=.35;
+    say('Stabilizer in. Pressure recovering.',3);blip(600,.2,.08,'sine');return;}
   /* clamp works any time there are bleeders */
   if(tool==='clamp'){
     for(const b of S.bleeders){if(!b.clamped&&dist(x,y,b.x,b.y)<S.F.clampR){
-      b.clamped=true;clickS();spurt(b.x,b.y,6);
+      b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
       if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);
       return;}}}
   if(!st)return;
@@ -585,8 +617,12 @@ function onDown(x,y){
       break;}
     case 'inject':{
       if(tool==='syringe')for(const s of st.sites){
-        if(!s.done&&dist(x,y,s.x,s.y)<18){s.done=true;
+        if(!s.done&&dist(x,y,s.x,s.y)<18){s.done=true;S.injT=.35;
           blip(600,.12,.07,'sine');break;}}
+      break;}
+    case 'retract':{
+      if(tool==='retractor'&&!st.done){const p=pathPt(.5);
+        if(dist(x,y,p.x,p.y)<52){st.grabbed=true;st.sx=x;st.sy=y;clickS();}}
       break;}
   }
 }
@@ -596,6 +632,7 @@ function onUp(){
     if(st.t==='incise')st.cutting=false;
     if(st.t==='extract'||st.t==='place'){if(st.organ)st.organ.grabbed=false;}
     if(st.t==='stones')st.list.forEach(s=>s.grabbed=false);
+    if(st.t==='retract')st.grabbed=false;
   }
 }
 const inField=(x,y)=>x>FX&&x<FX+FW&&y>FY&&y<FY+FH;
@@ -616,7 +653,7 @@ function fireEvent(ev){
     for(let i=0;i<n;i++)spawnBleeder(rand(.1,.9));
     S.alert={type:'bleeder',tLeft:S.F.evtWin,label:'HAEMORRHAGE — CLAMP IT'};
   }else if(ev.type==='bp'){
-    S.alert={type:'bp',tLeft:S.F.evtWin,label:'BP CRASHING — SYRINGE (8), CLICK PATIENT'};
+    S.alert={type:'bp',tLeft:S.F.evtWin,label:'BP CRASHING — SYRINGE (9), CLICK PATIENT'};
   }else{
     S.defib={t:0,attempts:3,speed:rand(2.4,3.1)};
     S.bpm=0;flatline(true);
@@ -653,6 +690,16 @@ function loop(now){
 }
 function update(dt){
   S.t+=dt;S.msgT-=dt;S.shake=Math.max(0,S.shake-dt*2);
+  S.clampT=Math.max(0,S.clampT-dt);S.injT=Math.max(0,S.injT-dt);
+  /* robotic arm drive */
+  if(S.robot&&!S.dead&&!S.done){
+    const sp=S.F.robotSpeed;
+    const vx=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
+    const vy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
+    if(vx||vy){const l=Math.hypot(vx,vy);
+      mouse.x=clamp(mouse.x+vx/l*sp*dt,14,W-14);
+      mouse.y=clamp(mouse.y+vy/l*sp*dt,66,H-8);}
+  }
   if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
   if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
   S.tLeft-=dt;
@@ -700,8 +747,31 @@ function updateStep(dt){
       }
       if(st.cells.size>=st.need){S.accs.push(1);nextStep();}
       break;}
+    case 'scan':{
+      const d=dist(mouse.x,mouse.y,st.tx,st.ty);
+      st.sig=(tool==='probe'&&inField(mouse.x,mouse.y))?clamp(1-d/190,0,1):0;
+      if(st.sig>0){
+        st.beepT=(st.beepT||0)-dt;
+        if(st.beepT<=0&&st.sig>.12){blip(360+st.sig*560,.05,.05,'sine');
+          st.beepT=.62-st.sig*.5;}
+        if(d<28){st.prog+=dt;
+          if(st.prog>=1){S.accs.push(1);blip(980,.2,.08,'sine');
+            say('Object located. Take the scalpel.',3);nextStep();}}
+        else st.prog=Math.max(0,st.prog-dt*.6);
+      }
+      break;}
+    case 'retract':{
+      if(st.grabbed&&mouse.down&&!st.done){
+        const p=pathPt(.5);
+        const drag=Math.abs((mouse.x-st.sx)*p.nx+(mouse.y-st.sy)*p.ny);
+        st.prog=clamp(Math.max(st.prog,drag/70),0,1);
+        if(st.prog>=1){st.done=true;st.grabbed=false;S.accs.push(1);
+          blip(320,.12,.07,'sine');say('Good exposure. Continue.',2.5);nextStep();}
+      }
+      break;}
     case 'incise':{
       if(st.cutting&&mouse.down&&tool==='scalpel'){
+        const tol=S.F.cutTol*(S.robot?1.4:1);
         /* advance along path toward mouse projection */
         let best=st.cp,bd=1e9;
         for(let u=st.cp;u<=Math.min(1,st.cp+.06);u+=.005){
@@ -709,13 +779,13 @@ function updateStep(dt){
           if(d<bd){bd=d;best=u;}}
         if(best>st.cp){
           st.cp=best;st.dev+=bd;st.devN++;S.cutBloodT=.35;
-          if(bd>S.F.cutTol){st.strays++;S.shake=.25;
+          if(bd>tol){st.strays++;S.shake=.25;
             const p=pathPt(st.cp);spurt(p.x,p.y,3);}
           if(Math.random()<.5){const p=pathPt(st.cp);spurt(p.x,p.y,1);}
         }
         if(st.cp>=.995){
           const avg=st.devN?st.dev/st.devN:0;
-          S.accs.push(clamp(1.15-avg/S.F.cutTol*.55-st.strays*.03,.2,1));
+          S.accs.push(clamp(1.15-avg/tol*.55-st.strays*.03,.2,1));
           nextStep();}
       }
       break;}
@@ -734,10 +804,10 @@ function updateStep(dt){
       if(st.spots.every(s=>s.done)){S.accs.push(1);nextStep();}
       break;}
     case 'extract': case 'place':{
-      const o=st.organ;
+      const o=st.organ,tearLim=S.tearV*(S.robot?1.45:1);
       if(o.grabbed&&!o.done){
         const sp=dist(mouse.x,mouse.y,o.x,o.y);
-        if(sp>S.tearV&&!o.placing&&inWoundArea(o.x,o.y)){
+        if(sp>tearLim&&!o.placing&&inWoundArea(o.x,o.y)){
           o.tears++;S.blood=Math.max(1,S.blood-3);S.shake=.4;
           spurt(o.x,o.y,8);say('Tissue tear! Ease it out slowly',2);blip(150,.15,.1,'square');
         }
@@ -753,10 +823,11 @@ function updateStep(dt){
       break;}
     case 'stones':{
       let tears=st.tears||0;
+      const tearLim=S.tearV*(S.robot?1.45:1);
       for(const s of st.list){
         if(s.grabbed&&!s.done){
           const sp=dist(mouse.x,mouse.y,s.x,s.y);
-          if(sp>S.tearV&&inWoundArea(s.x,s.y)){tears++;st.tears=tears;
+          if(sp>tearLim&&inWoundArea(s.x,s.y)){tears++;st.tears=tears;
             S.blood=Math.max(1,S.blood-2);spurt(s.x,s.y,5);S.shake=.3;}
           s.x+=(mouse.x-s.x)*.5;s.y+=(mouse.y-s.y)*.5;
           if(insideDish(s.x,s.y)){s.done=true;s.grabbed=false;
@@ -916,6 +987,7 @@ function draw(){
   ctx.strokeStyle='#153029';ctx.lineWidth=5;roundRect(FX,FY,FW,FH,26);ctx.stroke();
   drawDish();
   drawParticles();
+  drawScanFx();
   drawMonitor();
   drawHUD();
   drawTray();
@@ -937,6 +1009,8 @@ function woundOpenAt(u){
   const sut=S.steps.find(s=>s.t==='suture');
   if(sut&&sut.pts){const doneN=sut.pts.filter(p=>p.done).length;
     w*=1-0.92*doneN/sut.pts.length;}
+  const ret=S.steps.find(s=>s.t==='retract');
+  if(ret)w*=1+.45*(ret.prog||0);
   return w*26;
 }
 function drawWound(){
@@ -1032,6 +1106,25 @@ function drawWound(){
         ctx.beginPath();ctx.arc(p.x,p.y,9,0,7);ctx.stroke();
         if(p.prog>0){ctx.beginPath();ctx.strokeStyle='#f4b942';
           ctx.arc(p.x,p.y,9,-Math.PI/2,-Math.PI/2+p.prog*7);ctx.stroke();}}});
+  }
+  /* retractor hooks hold the wound open */
+  const ret=S.steps.find(s=>s.t==='retract');
+  if(ret&&(ret.prog||0)>0){
+    const p=pathPt(.5),w=woundOpenAt(.5)+7;
+    [[1,1],[-1,-1]].forEach(([sx2,sy2])=>{
+      const hx=p.x+p.nx*w*sx2,hy=p.y+p.ny*w*sy2;
+      ctx.strokeStyle='#b8c4c8';ctx.lineWidth=4;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(hx,hy);
+      ctx.lineTo(hx+p.nx*22*sx2,hy+p.ny*22*sy2);ctx.stroke();
+      ctx.strokeStyle='#7e8c92';ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.arc(hx,hy,5,0,7);ctx.stroke();});
+  }
+  if(S.step&&S.step.t==='retract'&&!S.step.done){
+    const p=pathPt(.5),o=18+Math.sin(S.t*4)*4;
+    ctx.strokeStyle='rgba(70,232,150,.7)';ctx.lineWidth=2;
+    [[1],[-1]].forEach(([sg])=>{
+      ctx.beginPath();ctx.moveTo(p.x+p.nx*o*sg,p.y+p.ny*o*sg);
+      ctx.lineTo(p.x+p.nx*(o+14)*sg,p.y+p.ny*(o+14)*sg);ctx.stroke();});
   }
   /* place target */
   if(S.step&&S.step.t==='place'&&!S.step.organ.done){
@@ -1291,16 +1384,24 @@ function drawTray(){
   ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,652);ctx.lineTo(W,652);ctx.stroke();
   const need=neededTool();
   TOOLS.forEach((tl,i)=>{
-    const x=190+i*112,y=658,w=104,h=56,sel=S.tool===i;
+    const x=140+i*100,y=658,w=94,h=56,sel=S.tool===i;
     ctx.fillStyle=sel?'rgba(70,232,150,.10)':'transparent';
     ctx.strokeStyle=sel?'#46e896':(need===tl.id&&Math.sin(S.t*5)>0?'#f4b942':'#1e3038');
     ctx.lineWidth=sel?2:1.5;
     roundRect(x,y,w,h,6);if(sel)ctx.fill();ctx.stroke();
-    ctx.save();ctx.translate(x+26,y+26);drawToolIcon(tl.id,.9);ctx.restore();
-    ctx.textAlign='left';ctx.fillStyle=sel?'#46e896':'#7fa192';ctx.font='9px '+mono;
-    ctx.fillText(tl.name,x+46,y+26);
-    ctx.fillStyle='#3d5a4e';ctx.fillText('['+(i+1)+']',x+46,y+40);
+    ctx.save();ctx.translate(x+22,y+26);drawToolIcon(tl.id,.8);ctx.restore();
+    ctx.textAlign='left';ctx.fillStyle=sel?'#46e896':'#7fa192';ctx.font='8px '+mono;
+    ctx.fillText(tl.name,x+40,y+25);
+    ctx.fillStyle='#3d5a4e';ctx.fillText(i===9?'[0]':'['+(i+1)+']',x+40,y+40);
   });
+  /* robot mode indicator */
+  if(save.gear.robot>0){
+    ctx.textAlign='left';ctx.font='9px '+mono;
+    ctx.fillStyle=S.robot?'#f4b942':'#3d5a4e';
+    ctx.fillText(S.robot?'◉ ROBOT — WASD MOVE · SPACE ACT · R MANUAL':'○ [R] ROBOTIC ARM',12,676);
+    if(S.robot){ctx.fillStyle='#7fa192';
+      ctx.fillText('KEYS 1-0 SWITCH TOOLS',12,692);}
+  }
 }
 function neededTool(){
   if(!S.step)return null;
@@ -1308,7 +1409,8 @@ function neededTool(){
   if(S.bleeders.some(b=>!b.clamped))return 'clamp';
   return {swab:'swab',incise:'scalpel',clamp:'clamp',cauterize:'cautery',
     extract:'forceps',stones:'forceps',place:'forceps',suture:'suture',
-    inject:'syringe',drill:'drill',irrigate:'swab'}[S.step.t];
+    inject:'syringe',drill:'drill',irrigate:'swab',
+    scan:'probe',retract:'retractor'}[S.step.t];
 }
 function drawToolIcon(id,s){
   ctx.scale(s,s);ctx.lineCap='round';
@@ -1337,6 +1439,19 @@ function drawToolIcon(id,s){
     ctx.beginPath();ctx.arc(0,0,10,-.5,2.6);ctx.stroke();
     ctx.strokeStyle='#46e896';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(9,-5);ctx.quadraticCurveTo(16,4,10,14);ctx.stroke();
+  }else if(id==='retractor'){
+    ctx.strokeStyle='#b8c4c8';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-5,-13);ctx.lineTo(-5,7);ctx.quadraticCurveTo(-5,13,1,13);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(5,-13);ctx.lineTo(5,3);ctx.quadraticCurveTo(5,9,11,9);ctx.stroke();
+    ctx.strokeStyle='#7e8c92';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(-5,-13);ctx.lineTo(5,-13);ctx.stroke();
+  }else if(id==='probe'){
+    ctx.strokeStyle='#9fb2b8';ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(-12,12);ctx.lineTo(0,0);ctx.stroke();
+    ctx.fillStyle='#39464c';ctx.beginPath();ctx.roundRect(-1,-11,9,13,4);ctx.fill();
+    ctx.strokeStyle='rgba(70,232,150,.8)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(3,-13,5,-2.4,-.7);ctx.stroke();
+    ctx.beginPath();ctx.arc(3,-13,9,-2.2,-.9);ctx.stroke();
   }else if(id==='drill'){
     ctx.fillStyle='#8f9ea4';ctx.beginPath();ctx.roundRect(-14,-7,17,13,3);ctx.fill();
     ctx.fillStyle='#6a787e';ctx.fillRect(-9,6,7,8);
@@ -1357,12 +1472,221 @@ function drawToolIcon(id,s){
     ctx.fillStyle='rgba(196,120,30,.5)';ctx.beginPath();ctx.arc(9,-5,5,0,7);ctx.fill();
   }
 }
+function toolAnim(){
+  const st=S.step,tool=TOOLS[S.tool].id,a={};
+  if(S.alert&&S.alert.type==='bp'&&tool==='syringe')a.ready=true;
+  if(!st)return a;
+  if(mouse.down){
+    if(st.t==='incise'&&st.cutting&&tool==='scalpel')a.cut=true;
+    if(st.t==='cauterize'&&tool==='cautery')a.heat=true;
+    if(st.t==='drill'&&tool==='drill')a.spin=true;
+    if(st.t==='suture'&&tool==='suture')a.stitch=true;
+    if((st.t==='swab'||st.t==='irrigate')&&tool==='swab')a.scrub=true;
+  }
+  if(st.t==='scan'&&tool==='probe')a.scan=true;
+  if((st.t==='extract'||st.t==='place')&&st.organ&&st.organ.grabbed)a.grip=true;
+  if(st.t==='stones'&&st.list&&st.list.some(s=>s.grabbed))a.grip=true;
+  if(st.t==='retract'&&st.grabbed&&mouse.down)a.grip=true;
+  return a;
+}
+/* detailed held-tool models: animate with use, upgrade with gear tier */
+function drawToolHeld(id,a){
+  const g=save.gear,t=S.t;
+  ctx.lineCap='round';
+  ctx.shadowColor='rgba(0,0,0,.45)';ctx.shadowBlur=7;
+  if(id==='scalpel'){
+    const tier=g.scalpel;
+    ctx.rotate(a.cut?-.12:-.38);
+    if(a.cut)ctx.translate(rand(-.7,.7),3);
+    ctx.strokeStyle=tier>=1?'#39464c':'#9fb2b8';ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(-26,26);ctx.lineTo(-2,2);ctx.stroke();
+    ctx.strokeStyle=tier>=1?'#5a6b72':'#c9d6da';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-24,22);ctx.lineTo(-6,4);ctx.stroke();
+    if(tier===2){ /* plasma edge */
+      ctx.shadowColor='#54e8ff';ctx.shadowBlur=14;
+      ctx.strokeStyle='#c8f6ff';ctx.lineWidth=3.5;
+      ctx.beginPath();ctx.moveTo(-2,0);ctx.lineTo(22,-20);ctx.stroke();
+      ctx.strokeStyle='rgba(84,232,255,.5)';ctx.lineWidth=7;
+      ctx.beginPath();ctx.moveTo(-2,0);ctx.lineTo(22,-20);ctx.stroke();
+    }else{
+      ctx.fillStyle='#eef4f6';
+      ctx.beginPath();ctx.moveTo(-3,-2);ctx.lineTo(22,-22);ctx.lineTo(17,-7);ctx.closePath();ctx.fill();
+      ctx.strokeStyle='rgba(90,110,118,.6)';ctx.lineWidth=1;ctx.stroke();
+    }
+  }else if(id==='clamp'){
+    const tier=g.clamp,close=S.clampT>0?1:0;
+    ctx.rotate(-.3);
+    const spread=close?1.5:5;
+    const col=tier===2?'#9fd8c8':tier===1?'#d8c68e':'#b8c4c8';
+    ctx.strokeStyle=col;ctx.lineWidth=3.5;
+    ctx.beginPath();ctx.moveTo(-spread,-16);ctx.lineTo(10,14);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(spread,-16);ctx.lineTo(14,10);ctx.stroke();
+    ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(14,20,6,0,7);ctx.stroke();
+    ctx.beginPath();ctx.arc(20,14,6,0,7);ctx.stroke();
+    ctx.fillStyle=col;ctx.fillRect(4,-2,10,4);
+  }else if(id==='forceps'){
+    const tier=g.forceps,close=a.grip?2:8;
+    ctx.rotate(-.25);
+    const col=tier===2?'#8fb4d8':tier===1?'#cfd8b0':'#b8c4c8';
+    ctx.strokeStyle=col;ctx.lineWidth=3.5;
+    ctx.beginPath();ctx.moveTo(-close,-22);ctx.quadraticCurveTo(-close/2,0,0,16);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(close,-22);ctx.quadraticCurveTo(close/2,0,2,16);ctx.stroke();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,-24,4,0,7);ctx.fill();
+    if(tier===2){ /* magnetic tips glow */
+      ctx.shadowColor='#8fd8ff';ctx.shadowBlur=10;
+      ctx.fillStyle='#c8ecff';ctx.beginPath();ctx.arc(1,17,3,0,7);ctx.fill();}
+  }else if(id==='retractor'){
+    const spread=a.grip?10:4;
+    ctx.rotate(-.2);
+    ctx.strokeStyle='#b8c4c8';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-spread,-22);ctx.lineTo(-spread,8);
+    ctx.quadraticCurveTo(-spread,16,-spread+8,16);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(spread,-22);ctx.lineTo(spread,4);
+    ctx.quadraticCurveTo(spread,12,spread+8,12);ctx.stroke();
+    ctx.strokeStyle='#7e8c92';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-spread,-22);ctx.lineTo(spread,-22);ctx.stroke();
+  }else if(id==='cautery'){
+    const tier=g.cautery;
+    ctx.rotate(-.35);
+    ctx.strokeStyle='#7c8a90';ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(-22,22);ctx.lineTo(2,-2);ctx.stroke();
+    ctx.fillStyle='#39464c';ctx.fillRect(-14,8,10,8);
+    const hot=a.heat?1:.35;
+    if(tier===2){ /* argon beam */
+      ctx.shadowColor='#6fb4ff';ctx.shadowBlur=12*hot;
+      ctx.strokeStyle=`rgba(160,210,255,${hot})`;ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.moveTo(4,-4);ctx.lineTo(16+(a.heat?rand(-2,2):0),-16);ctx.stroke();
+    }else{
+      ctx.shadowColor='#ffb347';ctx.shadowBlur=12*hot;
+      ctx.fillStyle=`rgba(255,${a.heat?150+rand(0,60)|0:179},71,${hot})`;
+      ctx.beginPath();ctx.arc(8,-8,a.heat?5+rand(-1,1):4,0,7);ctx.fill();}
+  }else if(id==='drill'){
+    ctx.rotate(-.15);
+    if(a.spin)ctx.translate(rand(-1,1),rand(-1,1));
+    ctx.fillStyle='#8f9ea4';ctx.beginPath();ctx.roundRect(-26,-11,26,20,4);ctx.fill();
+    ctx.fillStyle='#5e6a70';ctx.fillRect(-19,9,10,13);
+    ctx.fillStyle='#39464c';ctx.fillRect(-2,-6,6,10);
+    ctx.strokeStyle='#dde8ea';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(4,-1);ctx.lineTo(26,-1);ctx.stroke();
+    /* spinning flutes */
+    ctx.strokeStyle='#5e6a70';ctx.lineWidth=1.5;
+    const off=a.spin?(t*60)%5:0;
+    for(let i=0;i<4;i++){const x=6+off+i*5;
+      if(x<24){ctx.beginPath();ctx.moveTo(x,-4);ctx.lineTo(x+3,2);ctx.stroke();}}
+  }else if(id==='suture'){
+    const tier=g.suture;
+    if(tier===2){ /* auto-suture gun */
+      ctx.rotate(-.2);
+      const kick=a.stitch?Math.sin(t*22)*2:0;
+      ctx.fillStyle='#5e6a70';ctx.beginPath();ctx.roundRect(-20,-14,30,16,5);ctx.fill();
+      ctx.fillStyle='#39464c';ctx.fillRect(-14,2,10,16);
+      ctx.fillStyle='#46e896';ctx.fillRect(6,-11,3,4);
+      ctx.strokeStyle='#dde8ea';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(10,-4+kick);ctx.lineTo(20,-4+kick);ctx.stroke();
+    }else{
+      const rock=a.stitch?Math.sin(t*10)*.5:0;
+      ctx.rotate(-.3+rock);
+      ctx.strokeStyle=tier===1?'#d8c68e':'#cfd8dc';ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(0,0,13,-.5,2.6);ctx.stroke();
+      ctx.strokeStyle='#46e896';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(11,-7);ctx.quadraticCurveTo(22,4,14,20);ctx.stroke();
+    }
+  }else if(id==='syringe'){
+    ctx.rotate(-.5);
+    const push=S.injT>0?6*(S.injT/.35):0;
+    ctx.strokeStyle='#cfd8dc';ctx.lineWidth=3;
+    ctx.strokeRect(-14,-6,24,13);
+    ctx.fillStyle='rgba(70,232,150,.8)';ctx.fillRect(-12+push,-4,(18-push),9);
+    ctx.strokeStyle='#9fb2b8';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(-14-8+push,.5);ctx.lineTo(-14+push,.5);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-22+push,-7);ctx.lineTo(-22+push,8);ctx.stroke();
+    ctx.strokeStyle='#dde8ea';ctx.lineWidth=1.8;
+    ctx.beginPath();ctx.moveTo(10,.5);ctx.lineTo(24,.5);ctx.stroke();
+  }else if(id==='probe'){
+    ctx.rotate(-.4);
+    ctx.strokeStyle='#9fb2b8';ctx.lineWidth=7;
+    ctx.beginPath();ctx.moveTo(-20,20);ctx.lineTo(0,0);ctx.stroke();
+    ctx.fillStyle='#39464c';
+    ctx.beginPath();ctx.roundRect(-2,-14,12,18,6);ctx.fill();
+    ctx.fillStyle='#46e896';ctx.fillRect(1,-11,6,3);
+    if(a.scan){ctx.strokeStyle='rgba(70,232,150,.6)';ctx.lineWidth=1.5;
+      for(let r=0;r<3;r++){const rr=((t*30)%18)+r*9;
+        ctx.globalAlpha=clamp(1-rr/28,0,1)*.8;
+        ctx.beginPath();ctx.arc(4,-16,rr,-2.6,-.6);ctx.stroke();}
+      ctx.globalAlpha=1;}
+  }else{ /* swab */
+    const wig=a.scrub?Math.sin(t*14)*.25:0;
+    ctx.rotate(-.35+wig);
+    ctx.strokeStyle='#a08a5c';ctx.lineWidth=4.5;
+    ctx.beginPath();ctx.moveTo(-20,20);ctx.lineTo(2,-2);ctx.stroke();
+    ctx.fillStyle='#e8dcc0';ctx.beginPath();ctx.arc(9,-9,11,0,7);ctx.fill();
+    ctx.fillStyle='rgba(196,120,30,.55)';ctx.beginPath();ctx.arc(11,-7,7,0,7);ctx.fill();
+  }
+  ctx.shadowBlur=0;
+}
+function drawScanFx(){
+  const st=S.step;
+  if(!st||st.t!=='scan'||TOOLS[S.tool].id!=='probe')return;
+  const mono=getComputedStyle(document.body).fontFamily;
+  /* signal ring around the probe */
+  const sig=st.sig||0;
+  ctx.strokeStyle=`rgba(70,232,150,${.15+sig*.75})`;
+  ctx.lineWidth=2+sig*3;
+  ctx.beginPath();ctx.arc(mouse.x,mouse.y,30+Math.sin(S.t*(2+sig*10))*4,0,7);ctx.stroke();
+  if(st.prog>0){ctx.strokeStyle='#f4b942';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(mouse.x,mouse.y,38,-Math.PI/2,-Math.PI/2+st.prog*Math.PI*2);ctx.stroke();}
+  ctx.textAlign='center';ctx.fillStyle='#46e896';ctx.font='10px '+mono;
+  ctx.fillText('SIGNAL '+Math.round(sig*100)+'%',mouse.x,mouse.y+58);
+}
+function drawRobotArm(){
+  const ex=mouse.x,ey=Math.max(mouse.y,100);
+  const railY=72,L1=250,L2=290;
+  const cx=clamp(ex,FX+30,FX+FW-30);
+  /* ceiling rail */
+  ctx.strokeStyle='#1c2b32';ctx.lineWidth=12;
+  ctx.beginPath();ctx.moveTo(FX,railY);ctx.lineTo(FX+FW,railY);ctx.stroke();
+  ctx.strokeStyle='#37505a';ctx.lineWidth=4;
+  ctx.beginPath();ctx.moveTo(FX,railY-2);ctx.lineTo(FX+FW,railY-2);ctx.stroke();
+  /* carriage */
+  ctx.fillStyle='#2c3d44';ctx.beginPath();ctx.roundRect(cx-20,railY-12,40,24,5);ctx.fill();
+  ctx.strokeStyle='#4c646e';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle=Math.sin(S.t*5)>0?'#46e896':'#1e5c3c';
+  ctx.beginPath();ctx.arc(cx-11,railY,3,0,7);ctx.fill();
+  /* two-segment IK */
+  const dx=ex-cx,dy=ey-railY;
+  const d=clamp(Math.hypot(dx,dy)||1,60,L1+L2-8);
+  const th=Math.atan2(dy,dx);
+  const A=Math.acos(clamp((L1*L1+d*d-L2*L2)/(2*L1*d),-1,1));
+  const sgn=dx>=0?-1:1;
+  const elx=cx+Math.cos(th+A*sgn)*L1,ely=railY+Math.sin(th+A*sgn)*L1;
+  const seg=(x1,y1,x2,y2,w)=>{
+    ctx.strokeStyle='#26363d';ctx.lineWidth=w;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    ctx.strokeStyle='#54707c';ctx.lineWidth=w*.45;
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();};
+  seg(cx,railY,elx,ely,15);seg(elx,ely,ex,ey,11);
+  [[cx,railY,8],[elx,ely,7],[ex,ey,5]].forEach(([jx,jy,r])=>{
+    ctx.fillStyle='#3a4f58';ctx.beginPath();ctx.arc(jx,jy,r,0,7);ctx.fill();
+    ctx.strokeStyle='#6c8894';ctx.lineWidth=1.5;ctx.stroke();});
+  /* effector gripper + tool */
+  ctx.save();ctx.translate(ex,ey);
+  drawToolHeld(TOOLS[S.tool].id,toolAnim());
+  ctx.restore();
+  /* reticle */
+  ctx.strokeStyle=mouse.down?'rgba(244,185,66,.9)':'rgba(70,232,150,.55)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(ex,ey,17,0,7);ctx.stroke();
+  ctx.beginPath();
+  [[0,-22,0,-12],[0,12,0,22],[-22,0,-12,0],[12,0,22,0]].forEach(([x1,y1,x2,y2])=>{
+    ctx.moveTo(ex+x1,ey+y1);ctx.lineTo(ex+x2,ey+y2);});
+  ctx.stroke();
+}
 function drawCursor(){
+  if(S.robot)return drawRobotArm();
   if(mouse.y>652||mouse.y<60)return drawPointer();
-  ctx.save();ctx.translate(mouse.x,mouse.y);
-  ctx.rotate(-.35);ctx.scale(1.5,1.5);
-  ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=6;
-  drawToolIcon(TOOLS[S.tool].id,1);
+  ctx.save();ctx.translate(mouse.x,mouse.y);ctx.scale(1.15,1.15);
+  drawToolHeld(TOOLS[S.tool].id,toolAnim());
   ctx.restore();
 }
 function drawPointer(){
