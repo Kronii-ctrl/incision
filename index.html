@@ -1,0 +1,1147 @@
+<title>INCISION — Operating Theatre</title>
+<style>
+  :root{
+    --bg:#0a1014; --panel:#101a20; --panel2:#0d1519; --line:#1e3038;
+    --phos:#46e896; --phos-dim:#2a8f5e; --amber:#f4b942; --blood:#c0182a;
+    --ink:#cfe3d8; --ink-dim:#7fa192; --teal:#2e6b5e;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:'Avenir Next Condensed','Arial Narrow',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;opacity:.5}
+  .scr{display:none;position:fixed;inset:0;flex-direction:column;align-items:center;
+    justify-content:flex-start;overflow-y:auto;padding:32px 20px}
+  .scr.on{display:flex}
+  h1,h2{font-family:var(--sans);text-transform:uppercase;margin:0}
+  .title{font-size:clamp(52px,9vw,110px);letter-spacing:.08em;color:var(--ink);
+    line-height:.95;text-align:center;font-weight:700}
+  .title em{font-style:normal;color:var(--phos);text-shadow:0 0 18px rgba(70,232,150,.45)}
+  .sub{letter-spacing:.55em;color:var(--ink-dim);font-size:13px;text-transform:uppercase;
+    margin:14px 0 6px;text-align:center}
+  .rule{width:min(560px,80vw);height:1px;background:linear-gradient(90deg,transparent,var(--phos-dim),transparent);margin:22px 0}
+  .btn{font-family:var(--mono);font-size:15px;letter-spacing:.18em;text-transform:uppercase;
+    background:transparent;color:var(--phos);border:1px solid var(--phos-dim);
+    padding:13px 34px;cursor:pointer;transition:background .12s,box-shadow .12s}
+  .btn:hover,.btn:focus-visible{background:rgba(70,232,150,.09);box-shadow:0 0 14px rgba(70,232,150,.25);outline:none}
+  .btn.amber{color:var(--amber);border-color:#8a6a24}
+  .btn.amber:hover{background:rgba(244,185,66,.09);box-shadow:0 0 14px rgba(244,185,66,.2)}
+  .btn.ghost{color:var(--ink-dim);border-color:var(--line);letter-spacing:.12em;font-size:13px;padding:9px 20px}
+  .btn:disabled{opacity:.35;cursor:default;box-shadow:none;background:transparent}
+  .menu-btns{display:flex;flex-direction:column;gap:14px;margin-top:8px;width:280px}
+  .money{color:var(--amber);font-variant-numeric:tabular-nums}
+  .topline{width:min(1060px,94vw);display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:22px}
+  .topline h2{font-size:26px;letter-spacing:.2em;color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;width:min(1060px,94vw)}
+  .card{background:var(--panel);border:1px solid var(--line);padding:16px 18px;display:flex;
+    flex-direction:column;gap:8px;position:relative}
+  .card.locked{opacity:.45}
+  .card .num{position:absolute;top:12px;right:14px;color:var(--ink-dim);font-size:12px}
+  .card h3{margin:0;font-family:var(--sans);text-transform:uppercase;letter-spacing:.1em;
+    font-size:18px;color:var(--ink);font-weight:600}
+  .meta{display:flex;gap:16px;font-size:12px;color:var(--ink-dim)}
+  .meta b{color:var(--ink);font-weight:400}
+  .diff{color:var(--blood);letter-spacing:2px}
+  .stars{color:var(--amber);letter-spacing:2px;min-height:16px}
+  .card .btn{align-self:flex-start;margin-top:4px;padding:8px 18px;font-size:12px}
+  .tier{font-size:11px;color:var(--phos);letter-spacing:.15em;text-transform:uppercase}
+  .desc{font-size:12.5px;color:var(--ink-dim);line-height:1.55;max-width:56ch}
+  .price{color:var(--amber)}
+  .chart{background:var(--panel);border:1px solid var(--phos-dim);width:min(620px,94vw);
+    padding:28px 32px;margin-top:10px}
+  .chart h2{color:var(--phos);font-size:20px;letter-spacing:.25em;border-bottom:1px dashed var(--line);
+    padding-bottom:10px;margin-bottom:16px}
+  .chart dl{display:grid;grid-template-columns:150px 1fr;gap:9px 14px;margin:0;font-size:13.5px}
+  .chart dt{color:var(--ink-dim);text-transform:uppercase;letter-spacing:.08em;font-size:11.5px;padding-top:2px}
+  .chart dd{margin:0;color:var(--ink)}
+  .warn{color:var(--amber)}
+  .crit{color:#ff5f6b}
+  .row{display:flex;gap:14px;margin-top:24px;flex-wrap:wrap;justify-content:center}
+  .howto{font-size:12.5px;color:var(--ink-dim);line-height:2;margin-top:26px;text-align:center;max-width:64ch}
+  .howto b{color:var(--phos);font-weight:400}
+  #scr-or{padding:0;justify-content:center;background:#050809}
+  #cv{width:min(100vw,calc(100vh*16/9));aspect-ratio:16/9;display:block;cursor:none;touch-action:none}
+  .result-big{font-family:var(--sans);font-size:clamp(38px,6vw,64px);letter-spacing:.12em;
+    text-transform:uppercase;font-weight:700}
+  .ok{color:var(--phos);text-shadow:0 0 22px rgba(70,232,150,.4)}
+  .fail{color:#ff5f6b;text-shadow:0 0 22px rgba(255,95,107,.35)}
+  .bigstars{font-size:34px;color:var(--amber);letter-spacing:10px;margin:6px 0 2px}
+  ::selection{background:var(--phos-dim);color:#04120a}
+  @media (prefers-reduced-motion:no-preference){
+    .title em{animation:flicker 7s infinite steps(1)}
+    @keyframes flicker{0%,93%,95.5%,100%{opacity:1}94%,95%{opacity:.55}}
+  }
+</style>
+
+<section id="scr-menu" class="scr on" aria-label="Main menu">
+  <div style="height:8vh"></div>
+  <h1 class="title">INCI<em>SION</em></h1>
+  <div class="sub">Operating Theatre &nbsp;·&nbsp; Night Shift</div>
+  <div class="rule"></div>
+  <div class="money" id="menu-money" style="font-size:15px;letter-spacing:.15em"></div>
+  <div class="menu-btns">
+    <button class="btn" id="b-operate">Operate</button>
+    <button class="btn amber" id="b-shop">Supply Depot</button>
+    <button class="btn ghost" id="b-wipe">Reset Career</button>
+  </div>
+  <p class="howto">
+    Select instruments with the <b>tray</b> or keys <b>1–7</b> · follow the guide line with the
+    <b>scalpel</b> · <b>clamp</b> bleeders fast · extract with <b>forceps</b> — slow and steady,
+    tissue tears · <b>suture</b> to close · watch the monitor: complications strike without warning ·
+    short on time? buy more, mid-operation · <b>M</b> toggles sound
+  </p>
+</section>
+
+<section id="scr-levels" class="scr" aria-label="Surgery roster">
+  <div class="topline"><h2>Tonight's Roster</h2>
+    <div><span class="money" id="lv-money"></span>&nbsp;&nbsp;
+    <button class="btn ghost" data-nav="menu">Back</button></div></div>
+  <div class="grid" id="level-grid"></div>
+</section>
+
+<section id="scr-shop" class="scr" aria-label="Supply depot">
+  <div class="topline"><h2>Supply Depot</h2>
+    <div><span class="money" id="shop-money"></span>&nbsp;&nbsp;
+    <button class="btn ghost" data-nav="menu">Back</button></div></div>
+  <div class="grid" id="shop-grid"></div>
+</section>
+
+<section id="scr-brief" class="scr" aria-label="Patient chart">
+  <div style="height:5vh"></div>
+  <div class="chart" id="brief-chart"></div>
+  <div class="row">
+    <button class="btn" id="b-scrub">Scrub In</button>
+    <button class="btn ghost" data-nav="levels">Back</button>
+  </div>
+</section>
+
+<section id="scr-result" class="scr" aria-label="Operation report">
+  <div style="height:6vh"></div>
+  <div class="result-big" id="res-title"></div>
+  <div class="bigstars" id="res-stars"></div>
+  <div class="chart"><h2>Operation Report</h2><dl id="res-dl"></dl></div>
+  <div class="row" id="res-btns"></div>
+</section>
+
+<section id="scr-or" class="scr" aria-label="Operating theatre">
+  <canvas id="cv" width="1280" height="720"></canvas>
+</section>
+
+<script>
+'use strict';
+/* ============================== SAVE ============================== */
+const SAVE_KEY='incision-save-v1';
+const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0}});
+let save=defaultSave();
+try{const s=JSON.parse(localStorage.getItem(SAVE_KEY));if(s&&s.gear)save=Object.assign(defaultSave(),s);}catch(e){}
+const persist=()=>{try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}};
+const $=id=>document.getElementById(id);
+const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const dist=(x1,y1,x2,y2)=>Math.hypot(x1-x2,y1-y2);
+
+/* ============================== GEAR ============================== */
+const GEAR={
+  scalpel:{label:'Scalpel',tiers:['Steel Scalpel','Polymer Microblade','Plasma Scalpel'],
+    prices:[0,650,2200],
+    fx:['Standard issue. Adequate.','Wider cutting tolerance, cleaner wound, 35% less bleeding on incision.','Self-cauterizing edge. Very forgiving line, minimal bleeding.']},
+  clamp:{label:'Hemostats',tiers:['Ward Hemostats','Locking Hemostats','Micro-Vascular Clamps'],
+    prices:[0,500,1800],
+    fx:['Small grip radius.','Bigger grip radius, bleeders drain 25% slower.','Generous grip, bleeders drain half as fast.']},
+  forceps:{label:'Forceps',tiers:['Blunt Forceps','Atraumatic Forceps','Magnetic Graspers'],
+    prices:[0,550,1900],
+    fx:['Tissue tears if you pull fast.','Tolerates brisker extraction.','Glides tissue out. Tearing is nearly impossible.']},
+  suture:{label:'Suture Kit',tiers:['Silk & Needle','Barbed Suture','Auto-Suture Gun'],
+    prices:[0,600,2000],
+    fx:['Hold each stitch ~1s.','Stitches set 35% faster.','Near-instant stitches.']},
+  cautery:{label:'Cautery',tiers:['Heat Pen','Bipolar Cautery','Argon Beam Coagulator'],
+    prices:[0,450,1600],
+    fx:['Slow to seal.','Seals 35% faster.','Seals in a blink.']},
+  monitor:{label:'Monitoring',tiers:['Ward Monitor','Telemetry Suite','Predictive AI Monitor'],
+    prices:[0,700,2400],
+    fx:['8s to answer a complication.','+3s response window, earlier alarms.','+6s response window. It almost sees the future.']},
+  contract:{label:'OR Contract',tiers:['Standard Slot','Extended Slot','Priority Theatre'],
+    prices:[0,800,2600],
+    fx:['Scheduled time only.','+30s on every operation.','+60s on every operation.']},
+};
+function fx(){const g=save.gear;return{
+  cutTol:26+g.scalpel*11, cutBleed:[1,.65,.3][g.scalpel],
+  clampR:26+g.clamp*9, drain:[1,.75,.5][g.clamp],
+  tearV:[26,36,64][g.forceps],
+  stitchT:[1.0,.65,.12][g.suture],
+  cautT:[1.5,.95,.25][g.cautery],
+  evtWin:[8,11,14][g.monitor],
+  extraTime:[0,30,60][g.contract]};}
+
+/* ============================== LEVELS ============================== */
+const LEVELS=[
+ {name:'Laceration Repair',patient:['R. Alvarez',31,'Deep forearm laceration, kitchen accident'],
+  diff:1,time:140,pay:350,preCut:true,bleeders:2,stitches:4,mid:[],events:0,organ:null},
+ {name:'Glass Shard Removal',patient:['M. Okafor',24,'Embedded windshield glass, left flank'],
+  diff:1,time:170,pay:600,bleeders:2,stitches:5,mid:[['extract','shard']],events:0},
+ {name:'Appendectomy',patient:['D. Virtanen',19,'Acute appendicitis, WBC elevated'],
+  diff:2,time:200,pay:950,bleeders:3,stitches:6,mid:[['cauterize',2],['extract','appendix']],events:1},
+ {name:'Bullet Extraction',patient:['J. Castellanos',42,'9mm GSW, right lower quadrant'],
+  diff:2,time:190,pay:1300,bleeders:4,stitches:6,mid:[['extract','bullet'],['cauterize',2]],events:1},
+ {name:'Gallstone Removal',patient:['H. Lindqvist',57,'Cholelithiasis, recurrent colic'],
+  diff:3,time:215,pay:1700,bleeders:3,stitches:6,mid:[['stones',5]],events:1},
+ {name:'Tumor Resection',patient:['A. Beaumont',63,'Encapsulated abdominal mass, 6cm'],
+  diff:3,time:225,pay:2200,bleeders:4,stitches:7,mid:[['cauterize',3],['extract','tumor']],events:2},
+ {name:'Ruptured Spleen',patient:['K. Ishikawa',28,'Blunt trauma, hemoperitoneum'],
+  diff:4,time:200,pay:2800,bleeders:6,stitches:7,mid:[['extract','spleen'],['cauterize',3]],events:2,fastBleed:1.4},
+ {name:'Kidney Transplant',patient:['S. N\'Diaye',49,'End-stage renal disease, matched donor'],
+  diff:4,time:265,pay:3500,bleeders:4,stitches:8,mid:[['extract','kidney'],['place','kidney']],events:2},
+ {name:'Aortic Repair',patient:['V. Petrov',66,'Abdominal aortic aneurysm, leaking'],
+  diff:5,time:215,pay:4300,bleeders:5,stitches:9,mid:[['cauterize',4]],events:3,fastBleed:1.5},
+ {name:'Open-Heart Bypass',patient:['E. Marchetti',58,'Triple-vessel coronary disease'],
+  diff:5,time:270,pay:5800,bleeders:5,stitches:10,mid:[['cauterize',3],['place','graft']],events:3,organ:'heart'},
+];
+const MODS=[
+ {id:null,w:5},
+ {id:'hemophiliac',w:2,label:'HEMOPHILIAC — bleeds 50% faster',bleed:1.5,payx:1.3},
+ {id:'unstable',w:2,label:'UNSTABLE — expect an extra complication',events:1,payx:1.25},
+ {id:'fragile',w:2,label:'FRAGILE TISSUE — extract very gently',tear:.6,payx:1.2},
+];
+
+/* ============================== AUDIO ============================== */
+let AC=null,muted=false,flatOsc=null;
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}return AC;}
+function blip(f,dur,vol,type){const a=ac();if(!a||muted)return;const o=a.createOscillator(),g=a.createGain();
+  o.type=type||'sine';o.frequency.value=f;g.gain.setValueAtTime(vol,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+dur);o.connect(g).connect(a.destination);
+  o.start();o.stop(a.currentTime+dur);}
+const beepMon=()=>blip(880,.09,.05,'sine');
+const alarm =()=>{blip(1200,.14,.09,'square');setTimeout(()=>blip(1200,.14,.09,'square'),190);};
+const clickS=()=>blip(300,.05,.05,'triangle');
+const cashS =()=>{blip(1000,.1,.07,'sine');setTimeout(()=>blip(1400,.14,.07,'sine'),90);};
+const shockS=()=>blip(70,.5,.22,'sawtooth');
+function flatline(on){const a=ac();if(!a)return;
+  if(on&&!flatOsc&&!muted){flatOsc=a.createOscillator();const g=a.createGain();g.gain.value=.05;
+    flatOsc.frequency.value=680;flatOsc.connect(g).connect(a.destination);flatOsc.start();flatOsc._g=g;}
+  if(!on&&flatOsc){try{flatOsc.stop();}catch(e){}flatOsc=null;}}
+
+/* ============================== NAV ============================== */
+const screens=['menu','levels','shop','brief','result','or'];
+function show(name){screens.forEach(s=>$('scr-'+s).classList.toggle('on',s===name));
+  if(name==='menu')$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
+  if(name==='levels')renderLevels();if(name==='shop')renderShop();}
+document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{clickS();show(b.dataset.nav);}));
+$('b-operate').onclick=()=>{clickS();show('levels');};
+$('b-shop').onclick=()=>{clickS();show('shop');};
+$('b-wipe').onclick=()=>{if(confirm('Erase career progress?')){save=defaultSave();persist();show('menu');}};
+
+function renderLevels(){
+  $('lv-money').textContent=fmt$(save.money);
+  const g=$('level-grid');g.innerHTML='';
+  LEVELS.forEach((L,i)=>{
+    const unlocked=i===0||save.best[i-1]!==undefined;
+    const card=document.createElement('div');card.className='card'+(unlocked?'':' locked');
+    const best=save.best[i];
+    card.innerHTML=
+      `<span class="num">OP-${String(i+1).padStart(2,'0')}</span><h3>${L.name}</h3>`+
+      `<div class="meta"><span class="diff">${'✚'.repeat(L.diff)}${'·'.repeat(5-L.diff)}</span>`+
+      `<span>PAY <b class="money">${fmt$(L.pay)}</b></span><span>TIME <b>${L.time}s</b></span></div>`+
+      `<div class="stars">${best!==undefined?'★'.repeat(best)+'☆'.repeat(3-best):''}</div>`+
+      `<div class="desc">${L.patient[2]}.</div>`;
+    const b=document.createElement('button');b.className='btn';
+    b.textContent=unlocked?'Open Chart':'Locked';b.disabled=!unlocked;
+    b.onclick=()=>{clickS();openBrief(i);};
+    card.appendChild(b);g.appendChild(card);
+  });
+}
+function renderShop(){
+  $('shop-money').textContent=fmt$(save.money);
+  const g=$('shop-grid');g.innerHTML='';
+  Object.entries(GEAR).forEach(([k,G])=>{
+    const t=save.gear[k],max=t>=G.tiers.length-1;
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML=`<div class="tier">${G.label} — TIER ${t+1}/${G.tiers.length}</div>`+
+      `<h3>${G.tiers[t]}</h3><div class="desc">${G.fx[t]}</div>`+
+      (max?`<div class="desc" style="color:var(--phos)">Fully upgraded.</div>`
+          :`<div class="desc">NEXT: <b style="color:var(--ink)">${G.tiers[t+1]}</b> — ${G.fx[t+1]} `+
+           `<span class="price">${fmt$(G.prices[t+1])}</span></div>`);
+    if(!max){const b=document.createElement('button');b.className='btn amber';
+      b.textContent='Purchase';b.disabled=save.money<G.prices[t+1];
+      b.onclick=()=>{save.money-=G.prices[t+1];save.gear[k]++;persist();cashS();renderShop();};
+      card.appendChild(b);}
+    g.appendChild(card);
+  });
+}
+
+/* ============================== BRIEFING ============================== */
+let briefIdx=0,briefMod=null;
+function pickMod(L){if(L.diff<2)return MODS[0];
+  const pool=[];MODS.forEach(m=>{for(let i=0;i<m.w;i++)pool.push(m);});
+  return pool[Math.floor(Math.random()*pool.length)];}
+function openBrief(i){
+  briefIdx=i;const L=LEVELS[i];briefMod=pickMod(L);
+  const F=fx(),totalTime=L.time+F.extraTime;
+  const payMul=briefMod.payx||1;
+  $('brief-chart').innerHTML=`<h2>Patient Chart — OP-${String(i+1).padStart(2,'0')}</h2><dl>
+    <dt>Patient</dt><dd>${L.patient[0]}, ${L.patient[1]}</dd>
+    <dt>Presentation</dt><dd>${L.patient[2]}</dd>
+    <dt>Procedure</dt><dd>${L.name}</dd>
+    <dt>Difficulty</dt><dd class="crit">${'✚'.repeat(L.diff)}</dd>
+    <dt>Theatre time</dt><dd>${totalTime}s${F.extraTime?` <span class="warn">(+${F.extraTime}s contract)</span>`:''}</dd>
+    <dt>Base fee</dt><dd class="warn">${fmt$(L.pay*payMul)}</dd>
+    <dt>Flags</dt><dd class="${briefMod.id?'crit':''}">${briefMod.id?briefMod.label:'None. Routine case.'}</dd>
+  </dl>`;
+  show('brief');
+}
+$('b-scrub').onclick=()=>{clickS();startSurgery(briefIdx,briefMod);};
+
+/* ============================== CANVAS SETUP ============================== */
+const cv=$('cv'),ctx=cv.getContext('2d');
+const W=1280,H=720;
+const FX=230,FY=118,FW=820,FH=470;          // operating field
+const DISH={x:1152,y:492,rx:86,ry:52};      // instrument dish
+let mouse={x:640,y:360,down:false,px:640,py:360};
+function toGame(e){const r=cv.getBoundingClientRect();
+  return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);const p=toGame(e);
+  mouse.x=p.x;mouse.y=p.y;mouse.down=true;ac();onDown(p.x,p.y);});
+cv.addEventListener('pointermove',e=>{const p=toGame(e);mouse.x=p.x;mouse.y=p.y;});
+cv.addEventListener('pointerup',()=>{mouse.down=false;onUp();});
+addEventListener('keydown',e=>{
+  if(!$('scr-or').classList.contains('on'))return;
+  if(e.key>='1'&&e.key<='7')selectTool(+e.key-1);
+  if(e.key===' '&&S&&S.defib){e.preventDefault();tryShock();}
+  if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
+  if(e.key==='Escape')abortSurgery();
+});
+
+/* incision path */
+const PN=61,PATH=[];
+for(let i=0;i<PN;i++){const u=i/(PN-1);
+  PATH.push({x:455+u*310,y:378-Math.sin(u*Math.PI)*16,u});}
+function pathPt(u){const i=clamp(Math.round(u*(PN-1)),0,PN-1);return PATH[i];}
+
+/* offscreen textures */
+const skinCv=document.createElement('canvas');skinCv.width=FW;skinCv.height=FH;
+(function paintSkin(){const c=skinCv.getContext('2d');
+  const g=c.createRadialGradient(FW/2,FH/2,60,FW/2,FH/2,FW/1.6);
+  g.addColorStop(0,'#e2a988');g.addColorStop(.55,'#d09a7c');g.addColorStop(1,'#b98468');
+  c.fillStyle=g;c.fillRect(0,0,FW,FH);
+  for(let i=0;i<2600;i++){c.fillStyle=`rgba(${120+Math.random()*80|0},${60+Math.random()*40|0},40,${Math.random()*.07})`;
+    c.fillRect(Math.random()*FW,Math.random()*FH,1.6,1.6);}
+  for(let i=0;i<48;i++){c.strokeStyle='rgba(150,90,60,0.05)';c.lineWidth=1+Math.random()*2;
+    c.beginPath();const x=Math.random()*FW,y=Math.random()*FH;
+    c.moveTo(x,y);c.quadraticCurveTo(x+rand(-40,40),y+rand(-40,40),x+rand(-90,90),y+rand(-90,90));c.stroke();}
+})();
+const stainCv=document.createElement('canvas');stainCv.width=W;stainCv.height=H;
+const stainCx=stainCv.getContext('2d');
+const swabCv=document.createElement('canvas');swabCv.width=W;swabCv.height=H;
+const swabCx=swabCv.getContext('2d');
+
+/* ============================== TOOLS ============================== */
+const TOOLS=[
+ {id:'swab',   name:'ANTISEPTIC'},
+ {id:'scalpel',name:'SCALPEL'},
+ {id:'clamp',  name:'HEMOSTAT'},
+ {id:'forceps',name:'FORCEPS'},
+ {id:'cautery',name:'CAUTERY'},
+ {id:'suture', name:'SUTURE'},
+ {id:'syringe',name:'STABILIZER'},
+];
+function selectTool(i){if(S&&!S.done){S.tool=i;clickS();}}
+
+/* ============================== SURGERY STATE ============================== */
+let S=null,rafId=0,lastT=0;
+function buildSteps(L){
+  const s=[{t:'swab'}];
+  if(!L.preCut)s.push({t:'incise'});
+  s.push({t:'clamp'});
+  (L.mid||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
+  s.push({t:'suture'});
+  return s;
+}
+function startSurgery(idx,mod){
+  const L=LEVELS[idx],F=fx();
+  const events=(L.events||0)+((mod&&mod.events)||0);
+  const evts=[];
+  const tTot=L.time+F.extraTime;
+  for(let i=0;i<events;i++){
+    const types=['bleeder','bp','arrest'];
+    evts.push({at:rand(20,tTot*.72),type:types[Math.floor(Math.random()*types.length)],fired:false});
+  }
+  evts.sort((a,b)=>a.at-b.at);
+  S={L,idx,mod,F,steps:buildSteps(L),si:-1,step:null,
+     t:0,tLeft:tTot,tBought:0,blood:100,bpm:78,beatPh:0,ecg:[],
+     bleeders:[],parts:[],sparks:[],accs:[],msg:'',msgT:0,
+     tool:0,dead:false,deadT:0,done:false,doneT:0,failReason:null,
+     alert:null,defib:null,evts:evtsFilter(evts),handled:0,missed:0,
+     bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1),
+     tearV:F.tearV*((mod&&mod.tear)||1),
+     shake:0,organ:null,heartPh:0,cutBloodT:0};
+  stainCx.clearRect(0,0,W,H);swabCx.clearRect(0,0,W,H);
+  nextStep();
+  show('or');
+  lastT=performance.now();
+  cancelAnimationFrame(rafId);rafId=requestAnimationFrame(loop);
+}
+function evtsFilter(e){return e;}
+function say(m,t){S.msg=m;S.msgT=t||3;}
+
+function nextStep(){
+  S.si++;
+  if(S.si>=S.steps.length){finish(true);return;}
+  const st=S.steps[S.si],L=S.L;
+  S.step=st;
+  switch(st.t){
+    case 'swab':{st.cells=new Set();st.need=110;
+      say('Prep the field — scrub antiseptic over the surgical site',4);break;}
+    case 'incise':{st.cp=0;st.cutting=false;st.dev=0;st.devN=0;st.strays=0;
+      say('Take the scalpel — follow the guide line, one steady draw',4);break;}
+    case 'clamp':{const n=L.bleeders;
+      for(let i=0;i<n;i++)spawnBleeder(rand(.12,.88));
+      say('Bleeders! Clamp every one before the patient drains',4);break;}
+    case 'cauterize':{st.spots=[];const n=st.arg;
+      for(let i=0;i<n;i++){const p=pathPt(rand(.15,.85));
+        st.spots.push({x:p.x+rand(-14,14),y:p.y+rand(-8,8),prog:0,done:false});}
+      say('Ooze in the cavity — hold the cautery on each site to seal',4);break;}
+    case 'extract':{const p=pathPt(.5);
+      st.organ={kind:st.arg,x:p.x,y:p.y+4,grabbed:false,done:false,tears:0};
+      say('Forceps — grip the '+ORGAN_NAME[st.arg]+' and ease it to the dish. Gently.',4);break;}
+    case 'stones':{st.list=[];for(let i=0;i<st.arg;i++){const p=pathPt(rand(.15,.85));
+      st.list.push({x:p.x+rand(-10,10),y:p.y+rand(-6,10),r:9+rand(0,4),grabbed:false,done:false});}
+      say('Gallstones — forceps each one out to the dish',4);break;}
+    case 'place':{st.organ={kind:st.arg,x:DISH.x,y:DISH.y-6,grabbed:false,done:false,tears:0,placing:true};
+      say('The '+ORGAN_NAME[st.arg]+' is in the dish — set it into the cavity',4);break;}
+    case 'suture':{st.pts=[];const n=L.stitches;
+      for(let i=0;i<n;i++){const p=pathPt(.08+.84*i/(n-1));
+        st.pts.push({x:p.x,y:p.y,prog:0,done:false});}
+      say('Close — hold the suture on each marker',4);break;}
+  }
+}
+const ORGAN_NAME={shard:'glass shard',appendix:'appendix',bullet:'bullet',tumor:'tumor',
+  spleen:'spleen',kidney:'kidney',graft:'vein graft'};
+function spawnBleeder(u){const p=pathPt(u);
+  S.bleeders.push({x:p.x+rand(-6,6),y:p.y+rand(-4,4),clamped:false,rate:rand(.8,1.3)});}
+
+/* ============================== INPUT ============================== */
+function onDown(x,y){
+  if(!S||S.dead||S.done)return;
+  /* HUD buttons */
+  if(S.defib){tryShock();return;}
+  if(x>580&&x<710&&y>12&&y<50){buyTime();return;}
+  /* tool tray */
+  if(y>652){const i=Math.floor((x-244)/114);if(i>=0&&i<7)selectTool(i);return;}
+  const st=S.step,tool=TOOLS[S.tool].id;
+  /* alert: bp injection */
+  if(S.alert&&S.alert.type==='bp'&&tool==='syringe'&&inField(x,y)){
+    resolveAlert(true);say('Stabilizer in. Pressure recovering.',3);blip(600,.2,.08,'sine');return;}
+  /* clamp works any time there are bleeders */
+  if(tool==='clamp'){
+    for(const b of S.bleeders){if(!b.clamped&&dist(x,y,b.x,b.y)<S.F.clampR){
+      b.clamped=true;clickS();spurt(b.x,b.y,6);
+      if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);
+      return;}}}
+  if(!st)return;
+  switch(st.t){
+    case 'incise':
+      if(tool==='scalpel'){const p=pathPt(st.cp);
+        if(dist(x,y,p.x,p.y)<30)st.cutting=true;}
+      break;
+    case 'extract': case 'place':{
+      if(tool==='forceps'&&!st.organ.done&&dist(x,y,st.organ.x,st.organ.y)<34){
+        st.organ.grabbed=true;clickS();}
+      break;}
+    case 'stones':{
+      if(tool==='forceps')for(const s of st.list){
+        if(!s.done&&!s.grabbed&&dist(x,y,s.x,s.y)<26){s.grabbed=true;clickS();break;}}
+      break;}
+  }
+}
+function onUp(){
+  if(!S)return;const st=S.step;
+  if(st){
+    if(st.t==='incise')st.cutting=false;
+    if(st.t==='extract'||st.t==='place'){if(st.organ)st.organ.grabbed=false;}
+    if(st.t==='stones')st.list.forEach(s=>s.grabbed=false);
+  }
+}
+const inField=(x,y)=>x>FX&&x<FX+FW&&y>FY&&y<FY+FH;
+
+function buyTime(){
+  const cost=100+S.L.diff*60+S.tBought*40;
+  if(save.money>=cost){save.money-=cost;persist();S.tLeft+=25;S.tBought++;cashS();
+    say('+25 seconds bought ('+fmt$(cost)+')',2.5);}
+  else say('Insufficient credit for more theatre time',2.5);
+}
+function abortSurgery(){if(!S)return;S.failReason='aborted';finish(false);}
+
+/* ============================== EVENTS/COMPLICATIONS ============================== */
+function fireEvent(ev){
+  ev.fired=true;alarm();S.shake=.5;
+  if(ev.type==='bleeder'){
+    const n=1+(S.L.diff>3?1:0);
+    for(let i=0;i<n;i++)spawnBleeder(rand(.1,.9));
+    S.alert={type:'bleeder',tLeft:S.F.evtWin,label:'HAEMORRHAGE — CLAMP IT'};
+  }else if(ev.type==='bp'){
+    S.alert={type:'bp',tLeft:S.F.evtWin,label:'BP CRASHING — STABILIZER (7), CLICK PATIENT'};
+  }else{
+    S.defib={t:0,attempts:3,speed:rand(2.4,3.1)};
+    S.bpm=0;flatline(true);
+    say('CARDIAC ARREST — charge and shock in the green band',5);
+  }
+}
+function resolveAlert(ok){
+  if(!S.alert)return;
+  if(ok)S.handled++;else S.missed++;
+  S.alert=null;
+}
+function tryShock(){
+  const d=S.defib;if(!d)return;
+  const pos=50+50*Math.sin(d.t*d.speed);
+  shockS();S.shake=1;
+  if(pos>62&&pos<88){
+    S.defib=null;S.bpm=95;flatline(false);S.handled++;
+    say('Sinus rhythm restored. Back to work.',3);
+  }else{
+    d.attempts--;S.blood=Math.max(0,S.blood-6);
+    if(d.attempts<=0){S.defib=null;S.missed++;killPatient('asystole');}
+    else say('No conversion — '+d.attempts+' attempts left',2);
+  }
+}
+function killPatient(reason){
+  S.dead=true;S.deadT=0;S.bpm=0;S.failReason=reason;flatline(true);
+}
+
+/* ============================== UPDATE ============================== */
+function loop(now){
+  const dt=Math.min((now-lastT)/1000,.05);lastT=now;
+  if(S){update(dt);if(S)draw();}
+  if($('scr-or').classList.contains('on'))rafId=requestAnimationFrame(loop);
+}
+function update(dt){
+  S.t+=dt;S.msgT-=dt;S.shake=Math.max(0,S.shake-dt*2);
+  if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
+  if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
+  S.tLeft-=dt;
+  if(S.tLeft<=0){S.failReason='time';finish(false);return;}
+  /* heartbeat */
+  if(S.bpm>0){S.beatPh+=dt*S.bpm/60;
+    if(S.beatPh>=1){S.beatPh-=1;beepMon();}}
+  S.heartPh+=dt*(S.bpm||60)/60;
+  /* ecg trace */
+  S.ecg.push(S.bpm>0?ecgShape(S.beatPh)+rand(-.02,.02):rand(-.01,.01));
+  if(S.ecg.length>190)S.ecg.shift();
+  /* bleeders drain */
+  let drain=0;
+  S.bleeders.forEach(b=>{if(!b.clamped){drain+=b.rate;
+    if(Math.random()<.35)spurt(b.x,b.y,1);}});
+  S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
+  if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
+  if(S.blood<=0){S.blood=0;killPatient('exsanguination');return;}
+  if(S.blood<35&&S.bpm>0)S.bpm=Math.min(150,S.bpm+dt*6);
+  /* events */
+  for(const ev of S.evts)if(!ev.fired&&S.t>=ev.at&&!S.alert&&!S.defib){fireEvent(ev);break;}
+  if(S.alert){S.alert.tLeft-=dt;
+    if(S.alert.tLeft<=0){
+      const t=S.alert.type;resolveAlert(false);
+      S.blood=Math.max(1,S.blood-16);S.shake=.8;alarm();
+      say(t==='bp'?'Pressure bottomed out — blood lost':'Uncontrolled bleeding — blood lost',3);
+      if(t==='bleeder')S.bleeders.forEach(b=>b.clamped=true);
+    }}
+  if(S.defib){S.defib.t+=dt;S.blood=Math.max(1,S.blood-dt*1.6);}
+  updateStep(dt);
+  updateParts(dt);
+}
+function updateStep(dt){
+  const st=S.step;if(!st)return;
+  const tool=TOOLS[S.tool].id;
+  switch(st.t){
+    case 'swab':{
+      if(mouse.down&&tool==='swab'&&inField(mouse.x,mouse.y)){
+        const cell=(Math.floor(mouse.x/34))+','+(Math.floor(mouse.y/34));
+        if(!st.cells.has(cell)){st.cells.add(cell);
+          swabCx.fillStyle='rgba(196,120,30,0.34)';
+          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,30,0,7);swabCx.fill();}
+        else if(Math.random()<.3){swabCx.fillStyle='rgba(196,120,30,0.05)';
+          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,26,0,7);swabCx.fill();}
+      }
+      if(st.cells.size>=st.need){S.accs.push(1);nextStep();}
+      break;}
+    case 'incise':{
+      if(st.cutting&&mouse.down&&tool==='scalpel'){
+        /* advance along path toward mouse projection */
+        let best=st.cp,bd=1e9;
+        for(let u=st.cp;u<=Math.min(1,st.cp+.06);u+=.005){
+          const p=pathPt(u),d=dist(mouse.x,mouse.y,p.x,p.y);
+          if(d<bd){bd=d;best=u;}}
+        if(best>st.cp){
+          st.cp=best;st.dev+=bd;st.devN++;S.cutBloodT=.35;
+          if(bd>S.F.cutTol){st.strays++;S.shake=.25;
+            const p=pathPt(st.cp);spurt(p.x,p.y,3);}
+          if(Math.random()<.5){const p=pathPt(st.cp);spurt(p.x,p.y,1);}
+        }
+        if(st.cp>=.995){
+          const avg=st.devN?st.dev/st.devN:0;
+          S.accs.push(clamp(1.15-avg/S.F.cutTol*.55-st.strays*.03,.2,1));
+          nextStep();}
+      }
+      break;}
+    case 'clamp':{
+      if(S.bleeders.every(b=>b.clamped)){
+        S.accs.push(clamp(S.blood/100+.15,.3,1));nextStep();}
+      break;}
+    case 'cauterize':{
+      if(mouse.down&&tool==='cautery'){
+        for(const sp of st.spots){
+          if(!sp.done&&dist(mouse.x,mouse.y,sp.x,sp.y)<20){
+            sp.prog+=dt/S.F.cautT;
+            if(Math.random()<.6)spark(sp.x,sp.y);
+            if(sp.prog>=1){sp.done=true;blip(200,.1,.06,'sawtooth');}
+          }}}
+      if(st.spots.every(s=>s.done)){S.accs.push(1);nextStep();}
+      break;}
+    case 'extract': case 'place':{
+      const o=st.organ;
+      if(o.grabbed&&!o.done){
+        const sp=dist(mouse.x,mouse.y,o.x,o.y);
+        if(sp>S.tearV&&!o.placing&&inWoundArea(o.x,o.y)){
+          o.tears++;S.blood=Math.max(1,S.blood-3);S.shake=.4;
+          spurt(o.x,o.y,8);say('Tissue tear! Ease it out slowly',2);blip(150,.15,.1,'square');
+        }
+        o.x+=(mouse.x-o.x)*.5;o.y+=(mouse.y-o.y)*.5;
+        if(o.placing){
+          const tgt=pathPt(.5);
+          if(dist(o.x,o.y,tgt.x,tgt.y)<26){o.done=true;o.x=tgt.x;o.y=tgt.y+4;o.grabbed=false;
+            blip(500,.15,.07,'sine');S.accs.push(clamp(1-o.tears*.12,.4,1));nextStep();}
+        }else if(insideDish(o.x,o.y)){o.done=true;o.grabbed=false;
+          o.x=DISH.x+rand(-20,20);o.y=DISH.y+rand(-8,8);
+          blip(500,.15,.07,'sine');S.accs.push(clamp(1-o.tears*.15,.35,1));nextStep();}
+      }
+      break;}
+    case 'stones':{
+      let tears=st.tears||0;
+      for(const s of st.list){
+        if(s.grabbed&&!s.done){
+          const sp=dist(mouse.x,mouse.y,s.x,s.y);
+          if(sp>S.tearV&&inWoundArea(s.x,s.y)){tears++;st.tears=tears;
+            S.blood=Math.max(1,S.blood-2);spurt(s.x,s.y,5);S.shake=.3;}
+          s.x+=(mouse.x-s.x)*.5;s.y+=(mouse.y-s.y)*.5;
+          if(insideDish(s.x,s.y)){s.done=true;s.grabbed=false;
+            s.x=DISH.x+rand(-28,28);s.y=DISH.y+rand(-12,12);blip(700,.08,.06,'sine');}
+        }}
+      if(st.list.every(s=>s.done)){S.accs.push(clamp(1-(st.tears||0)*.1,.4,1));nextStep();}
+      break;}
+    case 'suture':{
+      if(mouse.down&&tool==='suture'){
+        for(const p of st.pts){
+          if(!p.done&&dist(mouse.x,mouse.y,p.x,p.y)<18){
+            p.prog+=dt/S.F.stitchT;
+            if(p.prog>=1){p.done=true;clickS();}
+            break;}}}
+      if(st.pts.every(p=>p.done)){S.accs.push(1);
+        S.step=null;S.done=true;S.doneT=0;say('Closed. Patient is stable.',3);}
+      break;}
+  }
+}
+const insideDish=(x,y)=>((x-DISH.x)/DISH.rx)**2+((y-DISH.y)/DISH.ry)**2<1;
+function inWoundArea(x,y){const p=pathPt(clamp((x-PATH[0].x)/(PATH[PN-1].x-PATH[0].x),0,1));
+  return Math.abs(y-p.y)<46&&x>PATH[0].x-30&&x<PATH[PN-1].x+30;}
+
+/* particles */
+function spurt(x,y,n){for(let i=0;i<n;i++)S.parts.push({x,y,vx:rand(-70,70),vy:rand(-160,-30),
+  r:rand(1.5,3.6),life:rand(.5,1.1)});}
+function spark(x,y){S.sparks.push({x:x+rand(-4,4),y:y+rand(-4,4),vx:rand(-40,40),vy:rand(-60,-10),
+  life:rand(.15,.4)});}
+function updateParts(dt){
+  for(let i=S.parts.length-1;i>=0;i--){const p=S.parts[i];
+    p.vy+=440*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
+    if(p.vy>0&&Math.random()<.12){
+      stainCx.fillStyle='rgba(120,10,18,0.5)';
+      stainCx.beginPath();stainCx.arc(p.x,p.y,p.r*rand(1,2.4),0,7);stainCx.fill();
+      S.parts.splice(i,1);continue;}
+    if(p.life<=0)S.parts.splice(i,1);}
+  if(S.parts.length>240)S.parts.splice(0,S.parts.length-240);
+  for(let i=S.sparks.length-1;i>=0;i--){const p=S.sparks[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
+    if(p.life<=0)S.sparks.splice(i,1);}
+}
+function ecgShape(p){
+  if(p<.08)return Math.sin(p/.08*Math.PI)*.15;
+  if(p<.12)return 0;
+  if(p<.14)return -(p-.12)/.02*.22;
+  if(p<.17)return -.22+(p-.14)/.03*1.4;
+  if(p<.20)return 1.18-(p-.17)/.03*1.48;
+  if(p<.24)return -.3+(p-.20)/.04*.3;
+  if(p<.45)return 0;
+  if(p<.60)return Math.sin((p-.45)/.15*Math.PI)*.28;
+  return 0;
+}
+
+/* ============================== FINISH ============================== */
+function finish(success,fromDone){
+  if(S._finished)return;S._finished=true;
+  flatline(false);
+  const L=S.L,mod=S.mod,payMul=(mod&&mod.payx)||1;
+  const stepsFrac=clamp(S.si/S.steps.length,0,1);
+  let pay=0,stars=0,score=0;
+  const acc=S.accs.length?S.accs.reduce((a,b)=>a+b,0)/S.accs.length:0;
+  if(success){
+    const timeB=clamp(S.tLeft/(L.time*.5),0,1);
+    score=acc*.55+S.blood/100*.3+timeB*.15;
+    pay=L.pay*payMul*(0.4+0.6*score)+S.handled*120;
+    stars=score>.85?3:score>.62?2:1;
+  }else{
+    pay=L.pay*payMul*.12*stepsFrac;
+  }
+  save.money+=Math.round(pay);
+  if(success)save.best[S.idx]=Math.max(save.best[S.idx]||0,stars);
+  persist();
+  /* report */
+  $('res-title').textContent=success?'Patient Saved':'Operation Failed';
+  $('res-title').className='result-big '+(success?'ok':'fail');
+  $('res-stars').textContent=success?'★'.repeat(stars)+'☆'.repeat(3-stars):'';
+  const reason={exsanguination:'Patient exsanguinated on the table.',
+    asystole:'Cardiac arrest — no rhythm recovered.',
+    time:'Theatre time expired. Senior surgeon took over.',
+    aborted:'You walked out mid-operation.'}[S.failReason]||'';
+  $('res-dl').innerHTML=
+    (success?'':`<dt>Cause</dt><dd class="crit">${reason}</dd>`)+
+    `<dt>Procedure</dt><dd>${L.name} — ${L.patient[0]}</dd>`+
+    `<dt>Precision</dt><dd>${Math.round(acc*100)}%</dd>`+
+    `<dt>Blood retained</dt><dd>${Math.round(S.blood)}%</dd>`+
+    `<dt>Complications</dt><dd>${S.handled} handled${S.missed?`, <span class="crit">${S.missed} missed</span>`:''}</dd>`+
+    `<dt>Time left</dt><dd>${Math.max(0,Math.round(S.tLeft))}s</dd>`+
+    `<dt>Payout</dt><dd class="warn">${fmt$(pay)}</dd>`+
+    `<dt>Balance</dt><dd class="warn">${fmt$(save.money)}</dd>`;
+  const btns=$('res-btns');btns.innerHTML='';
+  const idx=S.idx;
+  const mk=(txt,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;
+    b.textContent=txt;b.onclick=fn;btns.appendChild(b);};
+  if(success&&idx<LEVELS.length-1)mk('Next Patient','',()=>openBrief(idx+1));
+  mk(success?'Operate Again':'Retry','ghost',()=>openBrief(idx));
+  mk('Supply Depot','amber',()=>show('shop'));
+  mk('Roster','ghost',()=>show('levels'));
+  if(success)cashS();
+  S=null;
+  show('result');
+}
+
+/* ============================== DRAW ============================== */
+function draw(){
+  ctx.save();
+  if(S.shake>0)ctx.translate(rand(-1,1)*S.shake*6,rand(-1,1)*S.shake*6);
+  /* room */
+  ctx.fillStyle='#0a1014';ctx.fillRect(-20,-20,W+40,H+40);
+  /* surgical drape */
+  const dg=ctx.createLinearGradient(0,60,0,H);
+  dg.addColorStop(0,'#28584d');dg.addColorStop(1,'#1b4038');
+  ctx.fillStyle=dg;ctx.fillRect(60,66,W-120,576);
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;
+  for(let i=0;i<7;i++){ctx.beginPath();ctx.moveTo(60,110+i*82+Math.sin(i*3)*8);
+    ctx.bezierCurveTo(400,120+i*82,900,96+i*82,W-60,116+i*82);ctx.stroke();}
+  /* skin window */
+  ctx.save();
+  roundRect(FX,FY,FW,FH,26);ctx.clip();
+  ctx.drawImage(skinCv,FX,FY);
+  /* operating light pool */
+  const lg=ctx.createRadialGradient(640,370,60,640,370,420);
+  lg.addColorStop(0,'rgba(255,250,230,0.20)');lg.addColorStop(.6,'rgba(255,250,230,0.05)');
+  lg.addColorStop(1,'rgba(10,20,25,0.35)');
+  ctx.fillStyle=lg;ctx.fillRect(FX,FY,FW,FH);
+  ctx.drawImage(swabCv,0,0);
+  ctx.drawImage(stainCv,0,0);
+  drawWound();
+  ctx.restore();
+  /* drape window border */
+  ctx.strokeStyle='#153029';ctx.lineWidth=5;roundRect(FX,FY,FW,FH,26);ctx.stroke();
+  drawDish();
+  drawParticles();
+  drawMonitor();
+  drawHUD();
+  drawTray();
+  if(S.defib)drawDefib();
+  if(S.dead)drawDeath();
+  drawCursor();
+  ctx.restore();
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+function woundOpenAt(u){
+  const L=S.L;let cp=1;
+  const inc=S.steps.find(s=>s.t==='incise');
+  if(inc)cp=inc.cp||0;
+  if(u>cp)return 0;
+  let w=Math.pow(Math.sin(Math.min(u/Math.max(cp,.001),1)*Math.PI*.5+ (u/Math.max(cp,1e-4))*0 ),1);
+  w=Math.pow(Math.sin(u*Math.PI),.75);
+  const sut=S.steps.find(s=>s.t==='suture');
+  if(sut&&sut.pts){const doneN=sut.pts.filter(p=>p.done).length;
+    w*=1-0.92*doneN/sut.pts.length;}
+  return w*26;
+}
+function drawWound(){
+  const L=S.L;
+  const inc=S.steps.find(s=>s.t==='incise');
+  const cp=L.preCut?1:(inc?inc.cp:0);
+  const started=L.preCut||S.si>(L.preCut?-1:0)||(inc&&inc.cp>0);
+  /* guide line pre-cut */
+  if(inc&&inc.cp<1&&S.step&&S.step.t==='incise'){
+    ctx.setLineDash([7,7]);ctx.strokeStyle='rgba(20,40,80,.55)';ctx.lineWidth=2;
+    ctx.beginPath();PATH.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+    ctx.setLineDash([]);
+    const s0=pathPt(inc.cp);
+    ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,5,0,7);ctx.fill();
+  }
+  if(cp<=0)return;
+  /* wound polygon */
+  const top=[],bot=[];
+  for(let i=0;i<PN;i++){const p=PATH[i];if(p.u>cp)break;
+    const w=woundOpenAt(p.u);top.push([p.x,p.y-w]);bot.push([p.x,p.y+w]);}
+  if(top.length<2)return;
+  ctx.beginPath();ctx.moveTo(top[0][0],top[0][1]);
+  top.forEach(p=>ctx.lineTo(p[0],p[1]));
+  for(let i=bot.length-1;i>=0;i--)ctx.lineTo(bot[i][0],bot[i][1]);
+  ctx.closePath();
+  const wg=ctx.createLinearGradient(0,340,0,420);
+  wg.addColorStop(0,'#5e0d14');wg.addColorStop(.5,'#3a060c');wg.addColorStop(1,'#560c13');
+  ctx.fillStyle=wg;ctx.fill();
+  ctx.save();ctx.clip();
+  /* interior tissue */
+  ctx.fillStyle='rgba(150,30,40,.5)';
+  for(let i=0;i<14;i++){ctx.beginPath();
+    ctx.arc(455+i*24,378+Math.sin(i)*6,9,0,7);ctx.fill();}
+  /* beating heart backdrop for cardiac op */
+  if(S.L.organ==='heart')drawOrgan('heart',pathPt(.5).x,pathPt(.5).y+4,1);
+  /* step content inside wound */
+  const st=S.step;
+  if(st){
+    if(st.t==='cauterize')st.spots.forEach(sp=>{
+      if(!sp.done){ctx.fillStyle='rgba(220,60,40,.9)';
+        ctx.beginPath();ctx.arc(sp.x,sp.y,7+Math.sin(S.t*6)*2,0,7);ctx.fill();
+        ctx.strokeStyle='rgba(255,180,80,.8)';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(sp.x,sp.y,12,-Math.PI/2,-Math.PI/2+sp.prog*Math.PI*2);ctx.stroke();}
+      else{ctx.fillStyle='rgba(60,25,20,.9)';ctx.beginPath();ctx.arc(sp.x,sp.y,6,0,7);ctx.fill();}});
+    if(st.t==='stones')st.list.forEach(s=>{if(!s.done)drawStone(s.x,s.y,s.r);});
+    if((st.t==='extract')&&!st.organ.done)drawOrgan(st.organ.kind,st.organ.x,st.organ.y,1);
+  }
+  /* placed organs stay visible in the cavity for the rest of the op */
+  S.steps.forEach(sx=>{if(sx.t==='place'&&sx.organ&&sx.organ.done)
+    drawOrgan(sx.organ.kind,sx.organ.x,sx.organ.y,1);});
+  ctx.restore();
+  /* wound edge highlight */
+  ctx.strokeStyle='rgba(90,20,25,.9)';ctx.lineWidth=3;ctx.stroke();
+  /* bleeders */
+  S.bleeders.forEach(b=>{
+    if(!b.clamped){ctx.fillStyle='#e01525';
+      ctx.beginPath();ctx.arc(b.x,b.y,6+Math.sin(S.t*9+b.x)*2,0,7);ctx.fill();
+      ctx.fillStyle='rgba(224,21,37,.35)';
+      ctx.beginPath();ctx.arc(b.x,b.y,13+Math.sin(S.t*9+b.x)*3,0,7);ctx.fill();}
+    else drawHemostat(b.x,b.y);
+  });
+  /* suture markers & thread */
+  const sut=S.steps.find(s=>s.t==='suture');
+  if(sut&&sut.pts){
+    sut.pts.forEach(p=>{
+      if(p.done){ctx.strokeStyle='#12222c';ctx.lineWidth=2.5;
+        ctx.beginPath();ctx.moveTo(p.x-8,p.y-9);ctx.lineTo(p.x+8,p.y+9);
+        ctx.moveTo(p.x+8,p.y-9);ctx.lineTo(p.x-8,p.y+9);ctx.stroke();}
+      else if(S.step===sut){ctx.strokeStyle='rgba(70,232,150,.85)';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.arc(p.x,p.y,9,0,7);ctx.stroke();
+        if(p.prog>0){ctx.beginPath();ctx.strokeStyle='#f4b942';
+          ctx.arc(p.x,p.y,9,-Math.PI/2,-Math.PI/2+p.prog*7);ctx.stroke();}}});
+  }
+  /* place target */
+  if(S.step&&S.step.t==='place'&&!S.step.organ.done){
+    const t=pathPt(.5);ctx.setLineDash([5,5]);ctx.strokeStyle='rgba(70,232,150,.7)';
+    ctx.lineWidth=2;ctx.beginPath();ctx.arc(t.x,t.y,24+Math.sin(S.t*4)*3,0,7);ctx.stroke();
+    ctx.setLineDash([]);}
+  /* organ mid-drag outside wound clip */
+  const st2=S.step;
+  if(st2&&(st2.t==='extract'||st2.t==='place')&&st2.organ.grabbed&&!st2.organ.done)
+    drawOrgan(st2.organ.kind,st2.organ.x,st2.organ.y,1);
+  if(st2&&st2.t==='stones')st2.list.forEach(s=>{if(s.grabbed&&!s.done)drawStone(s.x,s.y,s.r);});
+}
+function drawHemostat(x,y){
+  ctx.save();ctx.translate(x,y);ctx.rotate(.7);
+  ctx.strokeStyle='#b8c4c8';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(26,26);ctx.stroke();
+  ctx.strokeStyle='#8fa0a6';ctx.beginPath();ctx.moveTo(2,-2);ctx.lineTo(28,22);ctx.stroke();
+  ctx.strokeStyle='#b8c4c8';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(30,30,5,0,7);ctx.stroke();ctx.beginPath();ctx.arc(34,24,5,0,7);ctx.stroke();
+  ctx.restore();
+}
+function drawStone(x,y,r){
+  const g=ctx.createRadialGradient(x-2,y-2,1,x,y,r);
+  g.addColorStop(0,'#e8d9a8');g.addColorStop(1,'#9a854e');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+  ctx.strokeStyle='rgba(60,40,10,.4)';ctx.lineWidth=1;ctx.stroke();
+}
+function drawOrgan(kind,x,y,s){
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  if(kind==='heart'){
+    const b=1+Math.max(0,Math.sin(S.heartPh*Math.PI*2))*.09;
+    ctx.scale(b,b);
+    const g=ctx.createRadialGradient(-6,-8,4,0,0,34);
+    g.addColorStop(0,'#c04a52');g.addColorStop(.6,'#8e1f2c');g.addColorStop(1,'#5e1019');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.moveTo(0,-16);
+    ctx.bezierCurveTo(22,-30,36,-6,10,22);ctx.bezierCurveTo(4,28,-2,28,-8,22);
+    ctx.bezierCurveTo(-34,-4,-20,-30,0,-16);ctx.fill();
+    ctx.strokeStyle='rgba(70,120,200,.5)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-6,-18);ctx.quadraticCurveTo(2,0,-4,18);ctx.stroke();
+  }else if(kind==='appendix'){
+    ctx.strokeStyle='#b25a54';ctx.lineWidth=13;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(-18,-6);ctx.quadraticCurveTo(4,-16,16,2);
+    ctx.quadraticCurveTo(22,12,12,18);ctx.stroke();
+    ctx.strokeStyle='rgba(255,200,190,.35)';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-16,-8);ctx.quadraticCurveTo(4,-18,14,0);ctx.stroke();
+  }else if(kind==='bullet'){
+    ctx.rotate(-.5);const g=ctx.createLinearGradient(-10,0,10,0);
+    g.addColorStop(0,'#6f7a80');g.addColorStop(.5,'#cfd8dc');g.addColorStop(1,'#5c666c');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.moveTo(-9,7);ctx.lineTo(-9,-3);ctx.quadraticCurveTo(0,-14,9,-3);
+    ctx.lineTo(9,7);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#8d6e3a';ctx.fillRect(-9,7,18,4);
+  }else if(kind==='shard'){
+    ctx.fillStyle='rgba(200,230,235,.75)';
+    ctx.beginPath();ctx.moveTo(-4,-20);ctx.lineTo(10,2);ctx.lineTo(3,20);ctx.lineTo(-8,6);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=1.5;ctx.stroke();
+  }else if(kind==='tumor'){
+    const g=ctx.createRadialGradient(-4,-4,2,0,0,24);
+    g.addColorStop(0,'#9c8f4a');g.addColorStop(1,'#5d4d2a');
+    ctx.fillStyle=g;ctx.beginPath();
+    for(let a=0;a<=6.4;a+=.4){const r=20+Math.sin(a*3.7)*4;
+      const px=Math.cos(a)*r,py=Math.sin(a)*r;a?ctx.lineTo(px,py):ctx.moveTo(px,py);}
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(40,25,10,.5)';ctx.stroke();
+  }else if(kind==='spleen'){
+    const g=ctx.createRadialGradient(-6,-6,3,0,0,30);
+    g.addColorStop(0,'#7c3a55');g.addColorStop(1,'#4a1e34');
+    ctx.fillStyle=g;ctx.save();ctx.rotate(.4);
+    ctx.beginPath();ctx.ellipse(0,0,28,16,0,0,7);ctx.fill();ctx.restore();
+  }else if(kind==='kidney'||kind==='graft'){
+    if(kind==='graft'){ctx.strokeStyle='#a24a5a';ctx.lineWidth=9;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(-20,8);ctx.quadraticCurveTo(0,-16,20,6);ctx.stroke();
+      ctx.strokeStyle='rgba(255,190,190,.4)';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(-18,6);ctx.quadraticCurveTo(0,-17,18,4);ctx.stroke();}
+    else{const g=ctx.createRadialGradient(-5,-5,3,0,0,26);
+      g.addColorStop(0,'#a04a48');g.addColorStop(1,'#6a2624');
+      ctx.fillStyle=g;
+      ctx.beginPath();ctx.moveTo(0,-18);
+      ctx.bezierCurveTo(20,-18,20,18,0,18);ctx.bezierCurveTo(-12,18,-14,8,-6,4);
+      ctx.bezierCurveTo(-12,0,-12,-8,-6,-6);ctx.bezierCurveTo(-14,-10,-12,-18,0,-18);
+      ctx.fill();}
+  }
+  ctx.restore();
+}
+function drawDish(){
+  ctx.save();
+  const g=ctx.createRadialGradient(DISH.x-16,DISH.y-14,8,DISH.x,DISH.y,DISH.rx);
+  g.addColorStop(0,'#d7dee1');g.addColorStop(.7,'#98a6ac');g.addColorStop(1,'#5c686e');
+  ctx.fillStyle=g;
+  ctx.beginPath();ctx.ellipse(DISH.x,DISH.y,DISH.rx,DISH.ry,0,0,7);ctx.fill();
+  ctx.strokeStyle='#2e383c';ctx.lineWidth=3;ctx.stroke();
+  ctx.fillStyle='rgba(40,55,60,.35)';
+  ctx.beginPath();ctx.ellipse(DISH.x,DISH.y+4,DISH.rx-14,DISH.ry-12,0,0,7);ctx.fill();
+  ctx.fillStyle='#7fa192';ctx.font='10px '+getComputedStyle(document.body).fontFamily;
+  ctx.textAlign='center';ctx.fillText('SPECIMEN DISH',DISH.x,DISH.y+DISH.ry+16);
+  /* extracted stuff sits in dish */
+  if(S){const st=S.step;
+    S.steps.forEach(sx=>{
+      if(sx.t==='extract'&&sx.organ&&sx.organ.done)drawOrgan(sx.organ.kind,sx.organ.x,sx.organ.y,.9);
+      if(sx.t==='stones'&&sx.list)sx.list.forEach(s=>{if(s.done)drawStone(s.x,s.y,s.r*.9);});
+      if(sx.t==='place'&&sx.organ&&!sx.organ.done&&!sx.organ.grabbed)
+        drawOrgan(sx.organ.kind,sx.organ.x,sx.organ.y,.9);});}
+  ctx.restore();
+}
+function drawParticles(){
+  S.parts.forEach(p=>{ctx.fillStyle=`rgba(190,16,30,${clamp(p.life,0,1)})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill();});
+  S.sparks.forEach(p=>{ctx.fillStyle=`rgba(255,${160+Math.random()*80|0},60,${p.life*3})`;
+    ctx.fillRect(p.x,p.y,2.5,2.5);});
+}
+function drawMonitor(){
+  const mx=1062,my=118,mw=206,mh=250;
+  ctx.fillStyle='#08110d';roundRect(mx,my,mw,mh,8);ctx.fill();
+  ctx.strokeStyle='#1e3830';ctx.lineWidth=2;ctx.stroke();
+  /* ecg */
+  ctx.save();roundRect(mx+8,my+10,mw-16,86,4);ctx.clip();
+  ctx.fillStyle='#04140c';ctx.fillRect(mx+8,my+10,mw-16,86);
+  ctx.strokeStyle='rgba(70,232,150,.12)';ctx.lineWidth=1;
+  for(let i=0;i<6;i++){ctx.beginPath();ctx.moveTo(mx+8,my+10+i*17);ctx.lineTo(mx+mw-8,my+10+i*17);ctx.stroke();}
+  ctx.strokeStyle='#46e896';ctx.lineWidth=2;ctx.shadowColor='#46e896';ctx.shadowBlur=6;
+  ctx.beginPath();
+  S.ecg.forEach((v,i)=>{const px=mx+8+(i/190)*(mw-16),py=my+66-v*40;
+    i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+  ctx.stroke();ctx.restore();
+  const mono=getComputedStyle(document.body).fontFamily;
+  ctx.textAlign='left';
+  ctx.fillStyle='#46e896';ctx.font='700 30px '+mono;
+  ctx.fillText(S.bpm>0?Math.round(S.bpm+Math.sin(S.t*2)*2):'--',mx+14,my+136);
+  ctx.font='10px '+mono;ctx.fillStyle='#7fa192';ctx.fillText('BPM',mx+14,my+150);
+  /* blood bar */
+  const bl=S.blood/100;
+  ctx.fillStyle='#7fa192';ctx.fillText('BLOOD VOLUME',mx+14,my+176);
+  ctx.fillStyle='#12100e';ctx.fillRect(mx+14,my+184,mw-28,14);
+  ctx.fillStyle=bl>.5?'#c0182a':bl>.25?'#f4b942':'#ff2e3e';
+  ctx.fillRect(mx+14,my+184,(mw-28)*bl,14);
+  ctx.strokeStyle='#1e3830';ctx.strokeRect(mx+14,my+184,mw-28,14);
+  ctx.fillStyle=bl<.35?'#ff5f6b':'#cfe3d8';ctx.font='11px '+mono;
+  ctx.fillText(Math.round(S.blood)+'%',mx+mw-46,my+195);
+  /* status line */
+  ctx.font='10px '+mono;
+  const status=S.dead?'ASYSTOLE':S.defib?'V-FIB':S.blood<35?'HYPOVOLEMIC':S.alert?'CRITICAL':'STABLE';
+  ctx.fillStyle=status==='STABLE'?'#46e896':'#ff5f6b';
+  if(status!=='STABLE'&&Math.sin(S.t*8)<0)ctx.fillStyle='#3a1418';
+  ctx.fillText('STATUS: '+status,mx+14,my+222);
+  ctx.fillStyle='#7fa192';
+  ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗',mx+14,my+240);
+}
+function drawHUD(){
+  const mono=getComputedStyle(document.body).fontFamily;
+  /* top bar */
+  ctx.fillStyle='#0d1519';ctx.fillRect(0,0,W,60);
+  ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
+  ctx.textAlign='left';ctx.fillStyle='#cfe3d8';ctx.font='700 17px '+mono;
+  ctx.fillText('OP-'+String(S.idx+1).padStart(2,'0')+' · '+S.L.name.toUpperCase(),24,37);
+  if(S.mod&&S.mod.id){ctx.fillStyle='#ff5f6b';ctx.font='10px '+mono;
+    ctx.fillText('⚑ '+S.mod.id.toUpperCase(),24,52);}
+  /* timer */
+  const low=S.tLeft<25;
+  ctx.textAlign='center';
+  ctx.fillStyle=low?(Math.sin(S.t*8)>0?'#ff2e3e':'#5e1218'):'#46e896';
+  ctx.font='700 28px '+mono;
+  const t=Math.max(0,S.tLeft);
+  ctx.fillText(String(Math.floor(t/60)).padStart(2,'0')+':'+String(Math.floor(t%60)).padStart(2,'0'),520,40);
+  /* buy time button */
+  const cost=100+S.L.diff*60+S.tBought*40;
+  ctx.strokeStyle='#8a6a24';ctx.lineWidth=1.5;ctx.strokeRect(580,12,130,38);
+  ctx.fillStyle=save.money>=cost?'#f4b942':'#6a5320';ctx.font='11px '+mono;
+  ctx.fillText('+25s · '+fmt$(cost),645,30);
+  ctx.fillStyle='#7fa192';ctx.font='9px '+mono;ctx.fillText('BUY TIME',645,44);
+  /* money */
+  ctx.textAlign='right';ctx.fillStyle='#f4b942';ctx.font='700 18px '+mono;
+  ctx.fillText(fmt$(save.money),W-24,32);
+  ctx.fillStyle='#7fa192';ctx.font='9px '+mono;ctx.fillText('CREDIT · ESC ABORTS · M SOUND',W-24,48);
+  /* instruction / alert banner */
+  let msg=S.msgT>0?S.msg:'',col='#cfe3d8';
+  if(S.alert){msg=S.alert.label+' — '+Math.ceil(S.alert.tLeft)+'s';col='#ff5f6b';}
+  if(msg){ctx.textAlign='center';
+    ctx.font=(S.alert?'700 ':'')+'15px '+mono;
+    const wdt=ctx.measureText(msg).width;
+    ctx.fillStyle='rgba(8,14,17,.82)';
+    ctx.fillRect(640-wdt/2-30,70,wdt+60,34);
+    ctx.fillStyle=col;
+    if(!S.alert||Math.sin(S.t*10)>-.6)ctx.fillText(msg,640,92);}
+}
+function drawTray(){
+  const mono=getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle='#0d1519';ctx.fillRect(0,652,W,68);
+  ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,652);ctx.lineTo(W,652);ctx.stroke();
+  const need=neededTool();
+  TOOLS.forEach((tl,i)=>{
+    const x=244+i*114,y=658,w=106,h=56,sel=S.tool===i;
+    ctx.fillStyle=sel?'rgba(70,232,150,.10)':'transparent';
+    ctx.strokeStyle=sel?'#46e896':(need===tl.id&&Math.sin(S.t*5)>0?'#f4b942':'#1e3038');
+    ctx.lineWidth=sel?2:1.5;
+    roundRect(x,y,w,h,6);if(sel)ctx.fill();ctx.stroke();
+    ctx.save();ctx.translate(x+26,y+26);drawToolIcon(tl.id,.9);ctx.restore();
+    ctx.textAlign='left';ctx.fillStyle=sel?'#46e896':'#7fa192';ctx.font='9px '+mono;
+    ctx.fillText(tl.name,x+46,y+26);
+    ctx.fillStyle='#3d5a4e';ctx.fillText('['+(i+1)+']',x+46,y+40);
+  });
+}
+function neededTool(){
+  if(!S.step)return null;
+  if(S.alert&&S.alert.type==='bp')return 'syringe';
+  if(S.bleeders.some(b=>!b.clamped))return 'clamp';
+  return {swab:'swab',incise:'scalpel',clamp:'clamp',cauterize:'cautery',
+    extract:'forceps',stones:'forceps',place:'forceps',suture:'suture'}[S.step.t];
+}
+function drawToolIcon(id,s){
+  ctx.scale(s,s);ctx.lineCap='round';
+  if(id==='scalpel'){
+    ctx.strokeStyle='#9fb2b8';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-12,12);ctx.lineTo(2,-2);ctx.stroke();
+    ctx.fillStyle='#dde8ea';
+    ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(14,-14);ctx.lineTo(12,-4);ctx.closePath();ctx.fill();
+  }else if(id==='clamp'){
+    ctx.strokeStyle='#b8c4c8';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-10,-12);ctx.lineTo(8,8);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-6,-14);ctx.lineTo(10,4);ctx.stroke();
+    ctx.beginPath();ctx.arc(10,12,4,0,7);ctx.stroke();
+    ctx.beginPath();ctx.arc(14,7,4,0,7);ctx.stroke();
+  }else if(id==='forceps'){
+    ctx.strokeStyle='#b8c4c8';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-8,-14);ctx.quadraticCurveTo(-2,4,6,12);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-2,-15);ctx.quadraticCurveTo(2,2,7,11);ctx.stroke();
+  }else if(id==='cautery'){
+    ctx.strokeStyle='#7c8a90';ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(-10,12);ctx.lineTo(4,-4);ctx.stroke();
+    ctx.fillStyle='#ffb347';ctx.beginPath();ctx.arc(8,-8,4,0,7);ctx.fill();
+    ctx.fillStyle='rgba(255,179,71,.4)';ctx.beginPath();ctx.arc(8,-8,7,0,7);ctx.fill();
+  }else if(id==='suture'){
+    ctx.strokeStyle='#cfd8dc';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(0,0,10,-.5,2.6);ctx.stroke();
+    ctx.strokeStyle='#46e896';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(9,-5);ctx.quadraticCurveTo(16,4,10,14);ctx.stroke();
+  }else if(id==='syringe'){
+    ctx.strokeStyle='#cfd8dc';ctx.lineWidth=3;
+    ctx.strokeRect(-8,-4,16,10);
+    ctx.beginPath();ctx.moveTo(8,1);ctx.lineTo(16,1);ctx.stroke();
+    ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-8,-8);ctx.lineTo(8,-8);ctx.stroke();
+    ctx.fillStyle='#46e896';ctx.fillRect(-7,-3,8,8);
+  }else{ /* swab */
+    ctx.strokeStyle='#a08a5c';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-12,12);ctx.lineTo(2,-2);ctx.stroke();
+    ctx.fillStyle='#e8dcc0';ctx.beginPath();ctx.arc(7,-7,8,0,7);ctx.fill();
+    ctx.fillStyle='rgba(196,120,30,.5)';ctx.beginPath();ctx.arc(9,-5,5,0,7);ctx.fill();
+  }
+}
+function drawCursor(){
+  if(mouse.y>652||mouse.y<60)return drawPointer();
+  ctx.save();ctx.translate(mouse.x,mouse.y);
+  ctx.rotate(-.35);ctx.scale(1.5,1.5);
+  ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=6;
+  drawToolIcon(TOOLS[S.tool].id,1);
+  ctx.restore();
+}
+function drawPointer(){
+  ctx.save();ctx.translate(mouse.x,mouse.y);
+  ctx.fillStyle='#46e896';ctx.strokeStyle='#04140c';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(11,11);ctx.lineTo(5,11);ctx.lineTo(8,18);
+  ctx.lineTo(5,19);ctx.lineTo(2,12);ctx.lineTo(-1,16);ctx.closePath();
+  ctx.fill();ctx.stroke();ctx.restore();
+}
+function drawDefib(){
+  const mono=getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle='rgba(4,7,9,.78)';ctx.fillRect(0,0,W,H);
+  const d=S.defib,gx=340,gy=330,gw=600,gh=42;
+  ctx.textAlign='center';
+  ctx.fillStyle='#ff2e3e';ctx.font='700 34px '+mono;
+  if(Math.sin(S.t*7)>-.4)ctx.fillText('CARDIAC ARREST',640,250);
+  ctx.fillStyle='#cfe3d8';ctx.font='14px '+mono;
+  ctx.fillText('CLICK / SPACE when the charge needle is in the green band — '+d.attempts+' attempts',640,288);
+  /* gauge */
+  ctx.fillStyle='#0d1519';ctx.fillRect(gx,gy,gw,gh);
+  ctx.strokeStyle='#1e3038';ctx.strokeRect(gx,gy,gw,gh);
+  ctx.fillStyle='rgba(70,232,150,.28)';
+  ctx.fillRect(gx+gw*.62,gy,gw*.26,gh);
+  ctx.strokeStyle='#46e896';ctx.strokeRect(gx+gw*.62,gy,gw*.26,gh);
+  const pos=50+50*Math.sin(d.t*d.speed);
+  ctx.fillStyle='#f4b942';ctx.fillRect(gx+gw*pos/100-3,gy-8,6,gh+16);
+  ctx.fillStyle='#7fa192';ctx.font='11px '+mono;
+  ctx.fillText('CHARGE '+Math.round(pos)+'%',640,gy+gh+28);
+}
+function drawDeath(){
+  ctx.fillStyle=`rgba(30,2,5,${clamp(S.deadT*.4,0,.72)})`;ctx.fillRect(0,0,W,H);
+  const mono=getComputedStyle(document.body).fontFamily;
+  ctx.textAlign='center';ctx.fillStyle='#ff5f6b';ctx.font='700 44px '+mono;
+  ctx.fillText('FLATLINE',640,340);
+  ctx.font='13px '+mono;ctx.fillStyle='#cfa0a4';
+  ctx.fillText('Time of death: '+new Date().toLocaleTimeString(),640,376);
+}
+
+/* init */
+show('menu');
+</script>
