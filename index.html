@@ -179,7 +179,7 @@
 <script>
 'use strict';
 /* ============================== SAVE ============================== */
-const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0}});
+const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0,saw:0,laser:0,suction:0,stapler:0}});
 let save=defaultSave();
 const $=id=>document.getElementById(id);
 
@@ -245,6 +245,18 @@ const GEAR={
   cautery:{label:'Cautery',tiers:['Heat Pen','Bipolar Cautery','Argon Beam Coagulator'],
     prices:[0,450,1600],
     fx:['Slow to seal.','Seals 35% faster.','Seals in a blink.']},
+  saw:{label:'Bone Saw',tiers:['Manual Saw','Powered Reciprocator','Ultrasonic Osteotome'],
+    prices:[0,550,1900],
+    fx:['Elbow grease and patience.','Cuts a third faster.','Hums straight through bone.']},
+  laser:{label:'Laser',tiers:['Surgical Laser','Stabilized Optics','Tracking Photocoagulator'],
+    prices:[0,600,2000],
+    fx:['Narrow beam. Unforgiving of drift.','Wider steady zone, drift forgiven.','Wide lock zone, fast burns, barely loses target.']},
+  suction:{label:'Suction',tiers:['Ward Aspirator','High-Flow Suction','Cyclone Console'],
+    prices:[0,450,1500],
+    fx:['A slow draw.','Clears pools 35% faster.','Pools vanish in a blink.']},
+  stapler:{label:'Stapler',tiers:['Skin Stapler','Pro Stapler','Auto-Feed Stapler'],
+    prices:[0,500,1700],
+    fx:['One staple per firm, precise click.','Bigger sweet spot per staple.','Huge sweet spot — each click also sets the nearest neighbour.']},
   monitor:{label:'Monitoring',tiers:['Ward Monitor','Telemetry Suite','Predictive AI Monitor'],
     prices:[0,700,2400],
     fx:['8s to answer a complication.','+3s response window, earlier alarms.','+6s response window. It almost sees the future.']},
@@ -291,7 +303,11 @@ function fx(){const g=save.gear;return{
   cautT:[1.5,.95,.25][g.cautery],
   evtWin:[8,11,14][g.monitor],
   extraTime:[0,30,60][g.contract],
-  robotSpeed:[0,360,540][g.robot]};}
+  robotSpeed:[0,360,540][g.robot],
+  sawRate:[650,470,320][g.saw],
+  laserR:[13,18,24][g.laser],laserDecay:[.9,.5,.22][g.laser],laserT:[1.2,.9,.55][g.laser],
+  sucT:[1.1,.72,.4][g.suction],
+  stapleR:[18,26,36][g.stapler]};}
 
 /* ============================== LEVELS ============================== */
 const SITES={
@@ -606,6 +622,7 @@ addEventListener('keydown',e=>{
     if(S&&S.defib)tryShock();
     else if(S&&S.robot&&!mouse.down){mouse.down=true;ac();onDown(mouse.x,mouse.y);}}
   if(e.key==='r'||e.key==='R')toggleRobot();
+  if(e.key==='f'||e.key==='F')toggleAuto();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
   if(e.key==='Escape')abortSurgery();
 });
@@ -617,9 +634,64 @@ function toggleRobot(){
   if(!S||S.dead||S.done)return;
   if(save.gear.robot<1){say('No robotic arm installed — see the Supply Depot',2.5);return;}
   S.robot=!S.robot;S.joy=null;mouse.down=false;onUp();clickS();
+  if(!S.robot)S.auto=false;
   say(S.robot?(TOUCH?'ROBOTIC ARM ENGAGED — drag to steer, or pad + ACT'
     :'ROBOTIC ARM ENGAGED — mouse steers it; WASD + SPACE also work')
     :'Manual control restored',3);
+}
+function toggleAuto(){
+  if(!S||S.dead||S.done)return;
+  if(save.gear.robot<1){say('Automation needs the robotic arm — see the Supply Depot',2.5);return;}
+  if(!S.robot)S.robot=true;
+  S.auto=!S.auto;clickS();
+  if(!S.auto&&S.autoHeld){S.autoHeld=false;mouse.down=false;onUp();}
+  say(S.auto?'AUTOMATION ON — arm preps, irrigates, suctions & clamps bleeders itself'
+    :'Automation off — you have the instruments',3);
+}
+const autoTool=id=>{const i=TOOLS.findIndex(t=>t.id===id);if(S.tool!==i)S.tool=i;};
+function autoMove(tx,ty,sp,dt){
+  const dx=tx-mouse.x,dy=ty-mouse.y,d=Math.hypot(dx,dy);
+  if(d<2)return;
+  const step=Math.min(d,sp*dt);
+  mouse.x+=dx/d*step;mouse.y+=dy/d*step;
+}
+function nearestSwabCell(st){
+  let best=null,bd=1e9;
+  for(let cx=FX+24;cx<FX+FW-16;cx+=34)for(let cy=FY+24;cy<FY+FH-16;cy+=34){
+    if(st.cells.has(Math.floor(cx/34)+','+Math.floor(cy/34)))continue;
+    const d=dist(mouse.x,mouse.y,cx,cy);
+    if(d<bd){bd=d;best={x:cx,y:cy};}}
+  return best;
+}
+function updateAuto(dt){
+  let wantHold=false,acting=false;
+  if(S.robot&&S.auto&&!S.dead&&!S.done&&!S.defib){
+    const sp=S.F.robotSpeed*.85,st=S.step;
+    const b=S.bleeders.find(x=>!x.clamped);
+    if(b){ /* haemorrhage overrides everything: clamp it */
+      autoTool('clamp');acting=true;
+      autoMove(b.x,b.y,sp*1.2,dt);
+      if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR){
+        b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
+        if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
+    }else if(st&&st.t==='swab'){
+      autoTool('swab');acting=true;
+      if(!S.autoTgt||dist(mouse.x,mouse.y,S.autoTgt.x,S.autoTgt.y)<10)S.autoTgt=nearestSwabCell(st);
+      if(S.autoTgt){autoMove(S.autoTgt.x,S.autoTgt.y,sp,dt);wantHold=true;}
+    }else if(st&&st.t==='irrigate'){
+      autoTool('swab');acting=true;
+      const p=pathPt(.5+.38*Math.sin(S.t*1.8));
+      autoMove(p.x,p.y,sp,dt);wantHold=true;
+    }else if(st&&st.t==='suction'){
+      autoTool('suction');acting=true;
+      const pl=st.pools.find(p=>!p.done);
+      if(pl){autoMove(pl.x,pl.y,sp,dt);
+        if(dist(mouse.x,mouse.y,pl.x,pl.y)<16)wantHold=true;}
+    }
+  }
+  if(wantHold&&!S.autoHeld){S.autoHeld=true;mouse.down=true;}
+  if(!wantHold&&S.autoHeld){S.autoHeld=false;mouse.down=false;onUp();}
+  S.autoActing=acting;
 }
 
 /* incision path — rebuilt per operation from the level's pathSpec */
@@ -780,6 +852,7 @@ function startSurgery(idx,mod){
      bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1),
      tearV:F.tearV*((mod&&mod.tear)||1),
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
+     auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
@@ -870,8 +943,9 @@ function onDown(x,y){
   /* HUD buttons */
   if(S.defib){tryShock();return;}
   if(x>580&&x<710&&y>12&&y<50){buyTime();return;}
-  /* robot toggle button (top bar) */
+  /* robot + auto buttons (top bar) */
   if(save.gear.robot>0&&x>724&&x<834&&y>12&&y<50){toggleRobot();return;}
+  if(save.gear.robot>0&&S.robot&&x>842&&x<922&&y>12&&y<50){toggleAuto();return;}
   /* tool tray */
   if(y>652){const i=Math.floor((x-36)/86);if(i>=0&&i<14)selectTool(i);return;}
   const st=S.step,tool=TOOLS[S.tool].id;
@@ -910,8 +984,14 @@ function onDown(x,y){
       break;}
     case 'staple':{
       if(tool==='stapler')for(const pt of st.pts){
-        if(!pt.done&&dist(x,y,pt.x,pt.y)<18){pt.done=true;S.stapleT=.2;
-          blip(210,.08,.1,'square');break;}}
+        if(!pt.done&&dist(x,y,pt.x,pt.y)<S.F.stapleR){pt.done=true;S.stapleT=.2;
+          blip(210,.08,.1,'square');
+          if(save.gear.stapler===2){ /* auto-feed: chain to nearest neighbour */
+            let nb=null,nd=1e9;
+            for(const q of st.pts)if(!q.done){const d=dist(pt.x,pt.y,q.x,q.y);
+              if(d<nd){nd=d;nb=q;}}
+            if(nb&&nd<70){nb.done=true;setTimeout(()=>blip(210,.08,.08,'square'),90);}}
+          break;}}
       break;}
   }
 }
@@ -996,13 +1076,17 @@ function update(dt){
       mouse.y=clamp(mouse.y+vy/l*sp*dt,66,H-8);
     }else S.robHeld=0;
   }
+  updateAuto(dt);
+  S.breathAmp+=(((S.dead||S.defib)?0:1)-S.breathAmp)*Math.min(1,dt*2.5);
   if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
   if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
   S.tLeft-=dt;
   if(S.tLeft<=0){S.failReason='time';finish(false);return;}
   /* heartbeat */
   if(S.bpm>0){S.beatPh+=dt*S.bpm/60;
-    if(S.beatPh>=1){S.beatPh-=1;beepMon();}}
+    if(S.beatPh>=1){S.beatPh-=1;beepMon();
+      /* pulsatile arterial bleeding — spurts ride the heartbeat */
+      S.bleeders.forEach(b=>{if(!b.clamped)spurt(b.x,b.y,2+Math.round(S.bleedMul));});}}
   S.heartPh+=dt*(S.bpm||60)/60;
   /* ecg trace */
   S.ecg.push(S.bpm>0?ecgShape(S.beatPh)+rand(-.02,.02):rand(-.01,.01));
@@ -1010,7 +1094,7 @@ function update(dt){
   /* bleeders drain */
   let drain=0;
   S.bleeders.forEach(b=>{if(!b.clamped){drain+=b.rate;
-    if(Math.random()<.35)spurt(b.x,b.y,1);}});
+    if(Math.random()<.12)spurt(b.x,b.y,1);}});
   S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
   if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
   if(S.blood<=0){S.blood=0;killPatient('exsanguination');return;}
@@ -1162,7 +1246,7 @@ function updateStep(dt){
           if(dist(mouse.x,mouse.y,qx,qy)<20){near=true;break;}}
         if(near){
           const dm=Math.abs(mouse.x-(st.lx??mouse.x))+Math.abs(mouse.y-(st.ly??mouse.y));
-          st.prog=clamp(st.prog+dm/650,0,1);
+          st.prog=clamp(st.prog+dm/S.F.sawRate,0,1);
           if(dm>1&&Math.random()<.5)spark(mouse.x,mouse.y,'#e8e2d0');
           if(dm>2&&Math.random()<.3)blip(90+Math.random()*70,.05,.05,'sawtooth');
           if(st.prog>=1){S.accs.push(1);blip(70,.2,.09,'sawtooth');
@@ -1174,12 +1258,12 @@ function updateStep(dt){
       if(mouse.down&&tool==='laser'){
         for(const sp of st.spots){
           if(sp.done)continue;
-          if(dist(mouse.x,mouse.y,sp.x,sp.y)<13){
-            sp.prog+=dt/1.2;
+          if(dist(mouse.x,mouse.y,sp.x,sp.y)<S.F.laserR){
+            sp.prog+=dt/S.F.laserT;
             if(Math.random()<.4)spark(sp.x,sp.y,'#ff8a7e');
             if(Math.random()<.2)blip(1300+Math.random()*300,.04,.035,'sine');
             if(sp.prog>=1){sp.done=true;blip(520,.12,.06,'sine');}
-          }else sp.prog=Math.max(0,sp.prog-dt*.9);
+          }else sp.prog=Math.max(0,sp.prog-dt*S.F.laserDecay);
         }}
       if(st.spots.every(s=>s.done)){S.accs.push(1);nextStep();}
       break;}
@@ -1187,7 +1271,7 @@ function updateStep(dt){
       if(mouse.down&&tool==='suction'){
         for(const pl of st.pools){
           if(!pl.done&&dist(mouse.x,mouse.y,pl.x,pl.y)<20){
-            pl.prog+=dt/1.1;
+            pl.prog+=dt/S.F.sucT;
             if(Math.random()<.25)blip(160-pl.prog*80,.06,.05,'triangle');
             stainCx.save();stainCx.globalCompositeOperation='destination-out';
             stainCx.beginPath();stainCx.arc(pl.x,pl.y,18,0,7);stainCx.fill();stainCx.restore();
@@ -1314,6 +1398,8 @@ function draw(){
   /* skin window */
   ctx.save();
   roundRect(FX,FY,FW,FH,26);ctx.clip();
+  /* ventilated breathing — the whole field rises and falls */
+  ctx.translate(0,Math.sin(S.t*1.15)*2.4*S.breathAmp);
   ctx.drawImage(skinCv,FX,FY);
   /* operating light pool */
   const lg=ctx.createRadialGradient(640,370,60,640,370,420);
@@ -1719,7 +1805,7 @@ function drawParticles(){
     ctx.fillRect(p.x,p.y,2.5,2.5);ctx.globalAlpha=1;});
 }
 function drawMonitor(){
-  const mx=1062,my=118,mw=206,mh=250;
+  const mx=1062,my=118,mw=206,mh=268;
   ctx.fillStyle='#08110d';roundRect(mx,my,mw,mh,8);ctx.fill();
   ctx.strokeStyle='#1e3830';ctx.lineWidth=2;ctx.stroke();
   /* ecg */
@@ -1737,6 +1823,11 @@ function drawMonitor(){
   ctx.fillStyle='#46e896';ctx.font='700 30px '+mono;
   ctx.fillText(S.bpm>0?Math.round(S.bpm+Math.sin(S.t*2)*2):'--',mx+14,my+136);
   ctx.font='10px '+mono;ctx.fillStyle='#7fa192';ctx.fillText('BPM',mx+14,my+150);
+  /* SpO2 — sags as blood volume falls */
+  const spo2=S.dead?0:Math.round(clamp(99-(100-S.blood)*.22-(S.defib?12:0),70,99));
+  ctx.fillStyle=spo2<90?'#ff5f6b':'#7fd4ff';ctx.font='700 24px '+mono;
+  ctx.fillText(S.dead?'--':spo2,mx+112,my+134);
+  ctx.font='10px '+mono;ctx.fillStyle='#7fa192';ctx.fillText('SpO₂ %',mx+112,my+150);
   /* blood bar */
   const bl=S.blood/100;
   ctx.fillStyle='#7fa192';ctx.fillText('BLOOD VOLUME',mx+14,my+176);
@@ -1746,14 +1837,20 @@ function drawMonitor(){
   ctx.strokeStyle='#1e3830';ctx.strokeRect(mx+14,my+184,mw-28,14);
   ctx.fillStyle=bl<.35?'#ff5f6b':'#cfe3d8';ctx.font='11px '+mono;
   ctx.fillText(Math.round(S.blood)+'%',mx+mw-46,my+195);
-  /* status line */
+  /* non-invasive BP */
+  const bpCrash=S.alert&&S.alert.type==='bp';
+  const sys=S.dead?0:Math.round((60+.58*S.blood)*(bpCrash?.62:1)+Math.sin(S.t*1.3)*2);
+  const dia=S.dead?0:Math.round((40+.36*S.blood)*(bpCrash?.62:1)+Math.sin(S.t*1.1)*1.5);
   ctx.font='10px '+mono;
-  const status=S.dead?'ASYSTOLE':S.defib?'V-FIB':S.blood<35?'HYPOVOLEMIC':S.alert?'CRITICAL':'STABLE';
+  ctx.fillStyle=(sys<85||bpCrash)?'#ff5f6b':'#cfe3d8';
+  ctx.fillText('NIBP '+(S.dead?'--/--':sys+'/'+dia)+' mmHg',mx+14,my+218);
+  /* status line */
+  const status=S.dead?'ASYSTOLE':S.defib?'V-FIB':bpCrash?'HYPOTENSIVE':S.blood<35?'HYPOVOLEMIC':S.alert?'CRITICAL':'STABLE';
   ctx.fillStyle=status==='STABLE'?'#46e896':'#ff5f6b';
   if(status!=='STABLE'&&Math.sin(S.t*8)<0)ctx.fillStyle='#3a1418';
-  ctx.fillText('STATUS: '+status,mx+14,my+222);
+  ctx.fillText('STATUS: '+status,mx+14,my+238);
   ctx.fillStyle='#7fa192';
-  ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗',mx+14,my+240);
+  ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗'+(S.auto?'   AUTO ◉':''),mx+14,my+256);
 }
 function drawHUD(){
   const mono=getComputedStyle(document.body).fontFamily;
@@ -1787,7 +1884,15 @@ function drawHUD(){
     ctx.fillStyle=S.robot?'#f4b942':'#46e896';ctx.font='11px '+mono;
     ctx.fillText(S.robot?'◉ ROBOT ON':'○ ROBOT',779,30);
     ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
-    ctx.fillText(TOUCH?'TAP TO TOGGLE':'[R] / CLICK',779,44);}
+    ctx.fillText(TOUCH?'TAP TO TOGGLE':'[R] / CLICK',779,44);
+    if(S.robot){ /* automation toggle */
+      ctx.strokeStyle=S.auto?'#46e896':'#2a4438';ctx.lineWidth=1.5;
+      ctx.strokeRect(842,12,80,38);
+      if(S.auto){ctx.fillStyle='rgba(70,232,150,.1)';ctx.fillRect(842,12,80,38);}
+      ctx.fillStyle=S.auto?'#46e896':'#7fa192';ctx.font='11px '+mono;
+      ctx.fillText(S.auto?'◉ AUTO':'○ AUTO',882,30);
+      ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
+      ctx.fillText('[F]',882,44);}}
   /* money */
   ctx.textAlign='right';ctx.fillStyle='#f4b942';ctx.font='700 18px '+mono;
   ctx.fillText(fmt$(save.money),W-24,32);
