@@ -758,19 +758,25 @@ function nearestSwabCell(st){
 }
 function updateAuto(dt){
   let wantHold=false,acting=false;
+  /* the arm settles for a beat over each site before acting — deliberate, zero-error */
+  const settled=within=>{
+    if(within){S.settleT=(S.settleT||0)+dt;return S.settleT>=.3;}
+    S.settleT=0;return false;};
   if(S.robot&&S.auto&&!S.dead&&!S.done&&!S.defib){
-    const sp=S.F.robotSpeed*.85,st=S.step;
+    const st=S.step;
+    const sp=S.F.robotSpeed*.5;        /* routine work: slow and exact */
+    const spE=S.F.robotSpeed*.95;      /* emergencies keep pace */
     const b=S.bleeders.find(x=>!x.clamped);
     if(b){ /* haemorrhage overrides everything: clamp it */
       autoTool('clamp');acting=true;
-      autoMove(b.x,b.y,sp*1.2,dt);
-      if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR){
+      autoMove(b.x,b.y,spE,dt);
+      if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR*.75){
         b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
         if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
     }else if(S.alert&&S.alert.type==='bp'){ /* BP crash: administer stabilizer */
       autoTool('syringe');acting=true;
       const p=pathPt(.5);
-      autoMove(p.x,p.y,sp*1.2,dt);
+      autoMove(p.x,p.y,spE,dt);
       if(dist(mouse.x,mouse.y,p.x,p.y)<16){
         resolveAlert(true);S.injT=.35;blip(600,.2,.08,'sine');
         say('Stabilizer administered — automated.',2.5);}
@@ -782,40 +788,40 @@ function updateAuto(dt){
         break;}
       case 'irrigate':{
         autoTool('swab');acting=true;
-        const p=pathPt(.5+.38*Math.sin(S.t*1.8));
+        const p=pathPt(.5+.38*Math.sin(S.t*1.1));
         autoMove(p.x,p.y,sp,dt);wantHold=true;
         break;}
       case 'suction':{
         autoTool('suction');acting=true;
         const pl=nearestUndone(st.pools);
         if(pl){autoMove(pl.x,pl.y,sp,dt);
-          if(dist(mouse.x,mouse.y,pl.x,pl.y)<16)wantHold=true;}
+          if(settled(dist(mouse.x,mouse.y,pl.x,pl.y)<12))wantHold=true;}
         break;}
       case 'cauterize':{
         autoTool('cautery');acting=true;
         const spn=nearestUndone(st.spots);
         if(spn){autoMove(spn.x,spn.y,sp,dt);
-          if(dist(mouse.x,mouse.y,spn.x,spn.y)<14)wantHold=true;}
+          if(settled(dist(mouse.x,mouse.y,spn.x,spn.y)<10))wantHold=true;}
         break;}
       case 'inject':{
         autoTool('syringe');acting=true;
         const sn=nearestUndone(st.sites);
         if(sn){autoMove(sn.x,sn.y,sp,dt);
-          if(dist(mouse.x,mouse.y,sn.x,sn.y)<10){
-            sn.done=true;S.injT=.35;blip(600,.12,.07,'sine');}}
+          if(settled(dist(mouse.x,mouse.y,sn.x,sn.y)<7))
+            {sn.done=true;S.settleT=0;S.injT=.35;blip(600,.12,.07,'sine');}}
         break;}
       case 'suture':{
         autoTool('suture');acting=true;
         const pt=nearestUndone(st.pts);
         if(pt){autoMove(pt.x,pt.y,sp,dt);
-          if(dist(mouse.x,mouse.y,pt.x,pt.y)<12)wantHold=true;}
+          if(settled(dist(mouse.x,mouse.y,pt.x,pt.y)<8))wantHold=true;}
         break;}
       case 'staple':{
         autoTool('stapler');acting=true;
         const pt=nearestUndone(st.pts);
         if(pt){autoMove(pt.x,pt.y,sp,dt);
-          if(dist(mouse.x,mouse.y,pt.x,pt.y)<12&&S.stapleT<=0){
-            pt.done=true;S.stapleT=.2;blip(210,.08,.1,'square');}}
+          if(settled(dist(mouse.x,mouse.y,pt.x,pt.y)<8)&&S.stapleT<=0){
+            pt.done=true;S.settleT=0;S.stapleT=.2;blip(210,.08,.1,'square');}}
         break;}
     }
   }
