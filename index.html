@@ -706,7 +706,7 @@ function renderShop(){
   const qt=save.quad.tier;
   const qc=document.createElement('div');qc.className='card';
   qc.innerHTML=`<div class="tier">ARES-IV — Servo Calibration ${qt}/5</div>`+
-    `<h3>System Speed</h3><div class="desc">Each calibration pass makes every ARES arm 18% faster. Precision is absolute at every tier.</div>`+
+    `<h3>System Speed</h3><div class="desc">Each calibration pass makes every ARES arm 15% faster. Precision is absolute at every tier — the system is deliberate, never wrong.</div>`+
     (qt>=5?`<div class="desc" style="color:var(--phos)">Fully calibrated.</div>`
       :`<div class="desc">NEXT: Calibration ${qt+1} — <span class="price">${fmt$(QP[qt])}</span></div>`);
   if(qt<5){const b=document.createElement('button');b.className='btn amber';
@@ -887,7 +887,7 @@ function toggleAres(){
 function updateQuad(dt){
   let wantHold=false,acting=null;
   const A=save.quad.arms,st=S.step;
-  const qs=300*(1+.18*(save.quad.tier||0));
+  const qs=190*(1+.15*(save.quad.tier||0));
   const move=(tx,ty,mul)=>autoMove(tx,ty,qs*(mul||1),dt);
   if(!S.dead&&!S.done){
     if(S.defib){
@@ -944,8 +944,8 @@ function updateQuad(dt){
                 if(dist(mouse.x,mouse.y,spn.x,spn.y)<10)wantHold=true;}
               break;}
             case 'saw':{autoTool('saw');
-              const u=.5+.5*Math.sin(S.t*7);
-              move(st.ax+(st.bx-st.ax)*u,st.ay+(st.by-st.ay)*u,1.4);
+              const u=.5+.5*Math.sin(S.t*5);
+              move(st.ax+(st.bx-st.ax)*u,st.ay+(st.by-st.ay)*u,1.5);
               wantHold=true;break;}
             case 'laser':{autoTool('laser');
               const spn=nearestUndone(st.spots);
@@ -1227,7 +1227,7 @@ function startSurgery(idx,mod){
      tearV:F.tearV*((mod&&mod.tear)||1)*D.tol,
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
-     ares:false,qHold:false,qActing:null,
+     ares:false,qHold:false,qActing:null,qchains:{},
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
@@ -2809,32 +2809,100 @@ function drawRobotArm(){
     ctx.moveTo(ex+x1,ey+y1);ctx.lineTo(ex+x2,ey+y2);});
   ctx.stroke();
 }
-const QMOUNTS={prep:[196,132],resect:[1084,132],hemo:[196,478],micro:[1084,478]};
+/* ARES-IV: four 6-axis booms on a shared ceiling gantry rail */
+const QRAILY=92;
+const QHOME={prep:220,hemo:440,resect:840,micro:1060};
+const QLENS=[105,130,135,115,75];   /* 5 links = 6 axes: base·shoulder·elbow·elbow·wrist·flange */
+function qChain(k){
+  let c=S.qchains[k];
+  if(!c){c={bx:QHOME[k],pts:[]};
+    for(let i=0;i<=QLENS.length;i++)c.pts.push({x:QHOME[k],y:QRAILY+10+i*30});
+    S.qchains[k]=c;}
+  return c;
+}
+function fabrik(pts,bx,by,tx,ty){
+  const n=pts.length;
+  for(let i=1;i<n-1;i++)pts[i].y+=1.2;   /* gravity sag on the mid links */
+  const total=QLENS.reduce((a,b)=>a+b,0)-6;
+  let dx=tx-bx,dy=ty-by,dd=Math.hypot(dx,dy)||1;
+  if(dd>total){tx=bx+dx/dd*total;ty=by+dy/dd*total;}
+  for(let it=0;it<8;it++){
+    pts[n-1].x=tx;pts[n-1].y=ty;
+    for(let i=n-2;i>=0;i--){
+      const ddx=pts[i].x-pts[i+1].x,ddy=pts[i].y-pts[i+1].y,l=Math.hypot(ddx,ddy)||1;
+      pts[i].x=pts[i+1].x+ddx/l*QLENS[i];pts[i].y=pts[i+1].y+ddy/l*QLENS[i];}
+    pts[0].x=bx;pts[0].y=by;
+    for(let i=1;i<n;i++){
+      const ddx=pts[i].x-pts[i-1].x,ddy=pts[i].y-pts[i-1].y,l=Math.hypot(ddx,ddy)||1;
+      pts[i].x=pts[i-1].x+ddx/l*QLENS[i-1];pts[i].y=pts[i-1].y+ddy/l*QLENS[i-1];}
+    if(Math.hypot(pts[n-1].x-tx,pts[n-1].y-ty)<1)break;
+  }
+  /* pin the flange exactly on the work point (residual spreads invisibly) */
+  pts[n-1].x=tx;pts[n-1].y=ty;
+}
 function drawQuadArms(){
   const A=save.quad.arms,mono=getComputedStyle(document.body).fontFamily;
+  const sk=RS();
+  /* shared gantry rail */
+  ctx.fillStyle=sk.rail;ctx.fillRect(140,QRAILY-8,980,16);
+  ctx.fillStyle=sk.slot;
+  for(let x=148;x<1114;x+=26)ctx.fillRect(x,QRAILY-3,14,6);
+  ctx.strokeStyle=sk.railEdge;ctx.lineWidth=1.5;ctx.strokeRect(140,QRAILY-8,980,16);
+  ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(140,QRAILY-6);ctx.lineTo(1120,QRAILY-6);ctx.stroke();
   let i=0;
-  for(const[k,[mx2,my2]]of Object.entries(QMOUNTS)){
+  for(const k of Object.keys(QHOME)){
     i++;
     if(!A[k])continue;
     const act=S.qActing===k;
+    const c=qChain(k);
+    /* carriage slides toward the work point (offset so the arm reaches at an angle) */
+    const bxT=act?clamp(mouse.x-90,150,1110):QHOME[k];
+    c.bx+=(bxT-c.bx)*.06;
     let ex,ey;
-    if(act){ex=mouse.x;ey=Math.max(mouse.y,100);}
-    else{ex=mx2+(mx2<640?66:-66);ey=my2+38+Math.sin(S.t*1.3+i*1.7)*6;}
-    ctx.fillStyle='#1a262c';ctx.beginPath();ctx.roundRect(mx2-16,my2-12,32,24,5);ctx.fill();
-    ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
-    const L1=210,L2=250;
-    const dx=ex-mx2,dy=ey-my2;
-    const dd=clamp(Math.hypot(dx,dy)||1,50,L1+L2-8);
-    const th=Math.atan2(dy,dx);
-    const al=Math.acos(clamp((L1*L1+dd*dd-L2*L2)/(2*L1*dd),-1,1));
-    const sgn=mx2<640?-1:1;
-    const elx=mx2+Math.cos(th+al*sgn)*L1,ely=my2+Math.sin(th+al*sgn)*L1;
-    taperSeg(mx2,my2,elx,ely,15,11);
-    taperSeg(elx,ely,ex,ey,10,6);
-    hub(mx2,my2,8);hub(elx,ely,6.5);hub(ex,ey,4);
-    ctx.textAlign='center';ctx.font='9px '+mono;
-    ctx.fillStyle=act?'#f4b942':'rgba(70,232,150,.7)';
-    ctx.fillText(k.toUpperCase(),mx2,my2-18);
+    if(act){ex=mouse.x;ey=Math.max(mouse.y,110);}
+    else{ex=c.bx+34;ey=QRAILY+128+Math.sin(S.t*1.1+i*1.7)*6;}
+    fabrik(c.pts,c.bx,QRAILY+10,ex,ey);
+    const pts=c.pts;
+    /* carriage */
+    ctx.fillStyle=sk.carriage;ctx.beginPath();ctx.roundRect(c.bx-22,QRAILY-13,44,26,5);ctx.fill();
+    ctx.strokeStyle=sk.seg[4];ctx.lineWidth=1.5;ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.2)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(c.bx-18,QRAILY-9);ctx.lineTo(c.bx+18,QRAILY-9);ctx.stroke();
+    /* links */
+    const widths=[18,15,12.5,10,7];
+    for(let s=0;s<QLENS.length;s++)
+      taperSeg(pts[s].x,pts[s].y,pts[s+1].x,pts[s+1].y,widths[s],widths[s]*.78);
+    /* cable conduit sagging along the chain */
+    ctx.strokeStyle=sk.cable;ctx.lineWidth=2.5;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(pts[0].x+9,pts[0].y+6);
+    for(let s=1;s<pts.length;s++)
+      ctx.quadraticCurveTo((pts[s-1].x+pts[s].x)/2+6,(pts[s-1].y+pts[s].y)/2+14,pts[s].x+5,pts[s].y+4);
+    ctx.stroke();
+    ctx.strokeStyle=sk.strand;ctx.lineWidth=1;ctx.stroke();
+    /* actuator housings on all six axes */
+    const jr=[10.5,9.5,8.5,7.5,6,4.5];
+    for(let s=0;s<pts.length;s++){
+      hub(pts[s].x,pts[s].y,jr[s]);
+      if(s>0&&s<pts.length-1){
+        const a=Math.atan2(pts[s].y-pts[s-1].y,pts[s].x-pts[s-1].x);
+        ctx.save();ctx.translate(pts[s].x,pts[s].y);ctx.rotate(a);
+        ctx.fillStyle='rgba(8,14,17,.55)';
+        ctx.beginPath();ctx.roundRect(-3,-jr[s]-2.5,6,jr[s]*2+5,3);ctx.fill();
+        ctx.restore();}
+    }
+    /* tool flange */
+    const wa=Math.atan2(pts[5].y-pts[4].y,pts[5].x-pts[4].x);
+    ctx.save();ctx.translate(ex,ey);ctx.rotate(wa);
+    ctx.fillStyle='#1c2a32';ctx.beginPath();ctx.roundRect(-9,-5,12,10,3);ctx.fill();
+    ctx.strokeStyle='#060b0e';ctx.lineWidth=1;ctx.stroke();
+    ctx.restore();
+    /* carriage LED + stencil */
+    ctx.fillStyle=act?'#f4b942':(Math.sin(S.t*3+i)>0?'#2c8a5c':'#17402c');
+    ctx.beginPath();ctx.arc(c.bx-15,QRAILY-3,2.4,0,7);ctx.fill();
+    ctx.textAlign='left';ctx.font='8px '+mono;
+    ctx.fillStyle='rgba(127,161,146,.85)';
+    ctx.fillText('A'+i+'·'+k.toUpperCase(),c.bx-9,QRAILY);
     if(act){ctx.save();ctx.translate(ex,ey);
       drawToolHeld(TOOLS[S.tool].id,toolAnim());ctx.restore();}
   }
