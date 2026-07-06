@@ -212,7 +212,7 @@
 <script>
 'use strict';
 /* ============================== SAVE ============================== */
-const defaultSave=()=>({money:500,best:{},gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0,saw:0,laser:0,suction:0,stapler:0}});
+const defaultSave=()=>({money:500,best:{},diffMode:'normal',gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0,saw:0,laser:0,suction:0,stapler:0,prep:0,retract:0,imaging:0,transfusion:0,defib:0}});
 let save=defaultSave();
 const $=id=>document.getElementById(id);
 
@@ -233,6 +233,7 @@ async function hashPw(name,pw){
 function normalizeSave(){
   save.gear=Object.assign(defaultSave().gear,save.gear);
   save.unlocked=save.unlocked||{};
+  save.diffMode=save.diffMode||'normal';
   save.skins=Object.assign({owned:{},equipped:'steel'},save.skins);
   save.skins.owned.steel=true;
 }
@@ -290,6 +291,21 @@ const GEAR={
   stapler:{label:'Stapler',tiers:['Skin Stapler','Pro Stapler','Auto-Feed Stapler'],
     prices:[0,500,1700],
     fx:['One staple per firm, precise click.','Bigger sweet spot per staple.','Huge sweet spot — each click also sets the nearest neighbour.']},
+  prep:{label:'Prep Kit',tiers:['Gauze & Iodine','Chlorhexidine Applicator','Spray Prep System'],
+    prices:[0,400,1300],
+    fx:['A small swab head.','Wider applicator covers more skin per pass.','Wide spray head — the field preps in a few sweeps.']},
+  retract:{label:'Retraction',tiers:['Hand Hooks','Ratchet Retractor','Self-Retaining Frame'],
+    prices:[0,450,1500],
+    fx:['A long, hard pull.','Ratchets open with less pull.','Nearly opens itself.']},
+  imaging:{label:'Imaging',tiers:['Ward Ultrasound','HD Doppler','3D Sonograph'],
+    prices:[0,500,1700],
+    fx:['Weak signal, tight lock.','Longer range, easier lock.','Finds anything, locks in a blink.']},
+  transfusion:{label:'Transfusion',tiers:['No Line','IV Saline Line','Rapid Infuser'],
+    prices:[0,700,2300],
+    fx:['Lost blood stays lost.','Slowly restores volume once bleeding is controlled.','Restores volume fast when the field is dry.']},
+  defib:{label:'Crash Cart',tiers:['Ward Defib','Biphasic Defib','Smart Defib'],
+    prices:[0,600,2000],
+    fx:['Narrow shock window, twitchy needle.','Wider window, steadier needle.','Broad window — conversion is almost certain.']},
   monitor:{label:'Monitoring',tiers:['Ward Monitor','Telemetry Suite','Predictive AI Monitor'],
     prices:[0,700,2400],
     fx:['8s to answer a complication.','+3s response window, earlier alarms.','+6s response window. It almost sees the future.']},
@@ -340,7 +356,19 @@ function fx(){const g=save.gear;return{
   sawRate:[650,470,320][g.saw],
   laserR:[13,18,24][g.laser],laserDecay:[.9,.5,.22][g.laser],laserT:[1.2,.9,.55][g.laser],
   sucT:[1.1,.72,.4][g.suction],
-  stapleR:[18,26,36][g.stapler]};}
+  stapleR:[18,26,36][g.stapler],
+  swabR:[30,42,56][g.prep],
+  retDrag:[70,52,36][g.retract],
+  scanRange:[190,240,300][g.imaging],scanLock:[28,38,50][g.imaging],scanT:[1,.7,.45][g.imaging],
+  regen:[0,.35,.8][g.transfusion],
+  defibZone:[.26,.34,.44][g.defib],defibSpd:[1,.85,.72][g.defib]};}
+/* difficulty settings */
+const DIFFS={
+ easy:    {label:'EASY',    time:1.3, bleed:.7, evt:-1,pay:.75,tol:1.3,guide:true},
+ normal:  {label:'NORMAL',  time:1,   bleed:1,  evt:0, pay:1,  tol:1,  guide:true},
+ hard:    {label:'HARD',    time:.85, bleed:1.3,evt:1, pay:1.35,tol:.9,guide:true},
+ hardcore:{label:'HARDCORE',time:.75, bleed:1.5,evt:2, pay:1.9,tol:.75,guide:false},
+};
 
 /* ============================== LEVELS ============================== */
 const SITES={
@@ -555,6 +583,21 @@ $('dv-kill').onclick=()=>{if(S&&!S.dead)killPatient('dev');};
 function renderLevels(){
   $('lv-money').textContent=fmt$(save.money);
   const g=$('level-grid');g.innerHTML='';
+  /* intensity selector */
+  const sel=document.createElement('div');sel.className='ward-head';
+  sel.style.cssText='display:flex;gap:8px;align-items:center;border:none;padding:4px 0 0;flex-wrap:wrap';
+  const lab=document.createElement('span');lab.textContent='INTENSITY';
+  lab.style.marginRight='6px';sel.appendChild(lab);
+  Object.entries(DIFFS).forEach(([k,d])=>{
+    const b=document.createElement('button');
+    b.className='btn ghost';b.style.padding='6px 12px';b.style.fontSize='11px';
+    if(save.diffMode===k){b.style.color=k==='hardcore'?'#ff5f6b':'var(--phos)';
+      b.style.borderColor=k==='hardcore'?'#8a2430':'var(--phos-dim)';}
+    b.textContent=d.label+(k==='hardcore'?' ☠':'');
+    b.title='time ×'+d.time+' · bleeding ×'+d.bleed+' · pay ×'+d.pay+(d.guide?'':' · incision guide OFF');
+    b.onclick=()=>{save.diffMode=k;persist();clickS();renderLevels();};
+    sel.appendChild(b);});
+  g.appendChild(sel);
   LEVELS.forEach((L,i)=>{
     if(i%10===0){const h=document.createElement('div');h.className='ward-head';
       h.textContent=WARDS[L.ward].name;g.appendChild(h);}
@@ -627,7 +670,8 @@ function pickMod(L){if(L.diff<2)return MODS[0];
   return pool[Math.floor(Math.random()*pool.length)];}
 function openBrief(i){
   briefIdx=i;const L=LEVELS[i];briefMod=pickMod(L);
-  const F=fx(),totalTime=L.time+F.extraTime;
+  const F=fx(),D=DIFFS[save.diffMode||'normal'];
+  const totalTime=Math.round((L.time+F.extraTime)*D.time);
   const payMul=briefMod.payx||1;
   $('brief-chart').innerHTML=`<h2>Patient Chart — OP-${String(i+1).padStart(2,'0')}</h2><dl>
     <dt>Patient</dt><dd>${L.patient[0]}, ${L.patient[1]}</dd>
@@ -635,8 +679,9 @@ function openBrief(i){
     <dt>Procedure</dt><dd>${L.name}</dd>
     <dt>Site</dt><dd>${L.site}</dd>
     <dt>Difficulty</dt><dd class="crit">${'✚'.repeat(L.diff)}</dd>
+    <dt>Intensity</dt><dd class="${D.guide?'':'crit'}">${D.label}${D.guide?'':' — no incision guide. Memorise the mark.'}</dd>
     <dt>Theatre time</dt><dd>${totalTime}s${F.extraTime?` <span class="warn">(+${F.extraTime}s contract)</span>`:''}</dd>
-    <dt>Base fee</dt><dd class="warn">${fmt$(L.pay*payMul)}</dd>
+    <dt>Base fee</dt><dd class="warn">${fmt$(L.pay*payMul*D.pay)}</dd>
     <dt>Flags</dt><dd class="${briefMod.id?'crit':''}">${briefMod.id?briefMod.label:'None. Routine case.'}</dd>
   </dl>`;
   show('brief');
@@ -974,22 +1019,22 @@ function buildSteps(L){
   return s;
 }
 function startSurgery(idx,mod){
-  const L=LEVELS[idx],F=fx();
-  const events=(L.events||0)+((mod&&mod.events)||0);
+  const L=LEVELS[idx],F=fx(),D=DIFFS[save.diffMode||'normal'];
+  const events=Math.max(0,(L.events||0)+((mod&&mod.events)||0)+D.evt);
   const evts=[];
-  const tTot=L.time+F.extraTime;
+  const tTot=Math.round((L.time+F.extraTime)*D.time);
   for(let i=0;i<events;i++){
     const types=['bleeder','bp','arrest'];
     evts.push({at:rand(20,tTot*.72),type:types[Math.floor(Math.random()*types.length)],fired:false});
   }
   evts.sort((a,b)=>a.at-b.at);
-  S={L,idx,mod,F,steps:buildSteps(L),si:-1,step:null,
+  S={L,idx,mod,F,D,steps:buildSteps(L),si:-1,step:null,
      t:0,tLeft:tTot,tBought:0,blood:100,bpm:78,beatPh:0,ecg:[],
      bleeders:[],parts:[],sparks:[],accs:[],msg:'',msgT:0,
      tool:0,dead:false,deadT:0,done:false,doneT:0,failReason:null,
      alert:null,defib:null,evts:evtsFilter(evts),handled:0,missed:0,
-     bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1),
-     tearV:F.tearV*((mod&&mod.tear)||1),
+     bleedMul:(L.fastBleed||1)*((mod&&mod.bleed)||1)*D.bleed,
+     tearV:F.tearV*((mod&&mod.tear)||1)*D.tol,
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
@@ -1168,7 +1213,7 @@ function fireEvent(ev){
   }else if(ev.type==='bp'){
     S.alert={type:'bp',tLeft:S.F.evtWin,label:'BP CRASHING — SYRINGE (9), CLICK PATIENT'};
   }else{
-    S.defib={t:0,attempts:3,speed:rand(2.4,3.1)};
+    S.defib={t:0,attempts:3,speed:rand(2.4,3.1)*S.F.defibSpd,zone:S.F.defibZone};
     S.bpm=0;flatline(true);
     say('CARDIAC ARREST — charge and shock in the green band',5);
   }
@@ -1182,7 +1227,8 @@ function tryShock(){
   const d=S.defib;if(!d)return;
   const pos=50+50*Math.sin(d.t*d.speed);
   shockS();S.shake=1;
-  if(pos>62&&pos<88){
+  const z=(d.zone||.26)*100;
+  if(pos>75-z/2&&pos<75+z/2){
     S.defib=null;S.bpm=95;flatline(false);S.handled++;
     say('Sinus rhythm restored. Back to work.',3);
   }else{
@@ -1241,6 +1287,9 @@ function update(dt){
     if(Math.random()<.12)spurt(b.x,b.y,1);}});
   S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
   if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
+  /* transfusion line restores volume once the field is dry */
+  if(S.F.regen&&!S.dead&&!S.bleeders.some(b=>!b.clamped)&&S.cutBloodT<=0)
+    S.blood=Math.min(100,S.blood+S.F.regen*dt);
   if(DEVOPT.god)S.blood=100;
   if(S.blood<=0){S.blood=0;killPatient('exsanguination');return;}
   if(S.blood<35&&S.bpm>0)S.bpm=Math.min(150,S.bpm+dt*6);
@@ -1263,12 +1312,18 @@ function updateStep(dt){
   switch(st.t){
     case 'swab':{
       if(mouse.down&&tool==='swab'&&inField(mouse.x,mouse.y)){
-        const cell=(Math.floor(mouse.x/34))+','+(Math.floor(mouse.y/34));
-        if(!st.cells.has(cell)){st.cells.add(cell);
-          swabCx.fillStyle='rgba(196,120,30,0.34)';
-          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,30,0,7);swabCx.fill();}
+        /* prep-kit tier widens the applicator: mark every cell under the head */
+        const R=S.F.swabR;let markedNew=false;
+        for(let gx=Math.floor((mouse.x-R)/34);gx<=Math.floor((mouse.x+R)/34);gx++)
+          for(let gy=Math.floor((mouse.y-R)/34);gy<=Math.floor((mouse.y+R)/34);gy++){
+            const ccx=gx*34+17,ccy=gy*34+17;
+            if(dist(mouse.x,mouse.y,ccx,ccy)>R||!inField(ccx,ccy))continue;
+            const key=gx+','+gy;
+            if(!st.cells.has(key)){st.cells.add(key);markedNew=true;}}
+        if(markedNew){swabCx.fillStyle='rgba(196,120,30,0.34)';
+          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,R,0,7);swabCx.fill();}
         else if(Math.random()<.3){swabCx.fillStyle='rgba(196,120,30,0.05)';
-          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,26,0,7);swabCx.fill();}
+          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,R-4,0,7);swabCx.fill();}
       }
       let critLeft=0;
       st.crit.forEach(c=>{if(!st.cells.has(c))critLeft++;});
@@ -1278,12 +1333,12 @@ function updateStep(dt){
       break;}
     case 'scan':{
       const d=dist(mouse.x,mouse.y,st.tx,st.ty);
-      st.sig=(tool==='probe'&&inField(mouse.x,mouse.y))?clamp(1-d/190,0,1):0;
+      st.sig=(tool==='probe'&&inField(mouse.x,mouse.y))?clamp(1-d/S.F.scanRange,0,1):0;
       if(st.sig>0){
         st.beepT=(st.beepT||0)-dt;
         if(st.beepT<=0&&st.sig>.12){blip(360+st.sig*560,.05,.05,'sine');
           st.beepT=.62-st.sig*.5;}
-        if(d<28){st.prog+=dt;
+        if(d<S.F.scanLock){st.prog+=dt/S.F.scanT;
           if(st.prog>=1){S.accs.push(1);blip(980,.2,.08,'sine');
             say('Object located. Take the scalpel.',3);nextStep();}}
         else st.prog=Math.max(0,st.prog-dt*.6);
@@ -1293,14 +1348,14 @@ function updateStep(dt){
       if(st.grabbed&&mouse.down&&!st.done){
         const p=pathPt(.5);
         const drag=Math.abs((mouse.x-st.sx)*p.nx+(mouse.y-st.sy)*p.ny);
-        st.prog=clamp(Math.max(st.prog,drag/70),0,1);
+        st.prog=clamp(Math.max(st.prog,drag/S.F.retDrag),0,1);
         if(st.prog>=1){st.done=true;st.grabbed=false;S.accs.push(1);
           blip(320,.12,.07,'sine');say('Good exposure. Continue.',2.5);nextStep();}
       }
       break;}
     case 'incise':{
       if(st.cutting&&mouse.down&&tool==='scalpel'){
-        const tol=S.F.cutTol*(S.robot?1.4:1);
+        const tol=S.F.cutTol*(S.robot?1.4:1)*S.D.tol;
         /* advance along path toward mouse projection */
         let best=st.cp,bd=1e9;
         for(let u=st.cp;u<=Math.min(1,st.cp+.06);u+=.005){
@@ -1490,13 +1545,14 @@ function finish(success,fromDone){
   const stepsFrac=clamp(S.si/S.steps.length,0,1);
   let pay=0,stars=0,score=0;
   const acc=S.accs.length?S.accs.reduce((a,b)=>a+b,0)/S.accs.length:0;
+  const dMul=(S.D&&S.D.pay)||1;
   if(success){
     const timeB=clamp(S.tLeft/(L.time*.5),0,1);
     score=acc*.55+S.blood/100*.3+timeB*.15;
-    pay=L.pay*payMul*(0.4+0.6*score)+S.handled*120;
+    pay=L.pay*payMul*dMul*(0.4+0.6*score)+S.handled*120;
     stars=score>.85?3:score>.62?2:1;
   }else{
-    pay=L.pay*payMul*.12*stepsFrac;
+    pay=L.pay*payMul*dMul*.12*stepsFrac;
   }
   save.money+=Math.round(pay);
   if(success)save.best[S.idx]=Math.max(save.best[S.idx]||0,stars);
@@ -1552,8 +1608,8 @@ function draw(){
   ctx.drawImage(skinCv,FX,FY);
   /* operating light pool */
   const lg=ctx.createRadialGradient(640,370,60,640,370,420);
-  lg.addColorStop(0,'rgba(255,250,230,0.20)');lg.addColorStop(.6,'rgba(255,250,230,0.05)');
-  lg.addColorStop(1,'rgba(10,20,25,0.35)');
+  lg.addColorStop(0,'rgba(255,250,230,0.22)');lg.addColorStop(.55,'rgba(255,250,230,0.05)');
+  lg.addColorStop(1,'rgba(6,12,16,0.5)');
   ctx.fillStyle=lg;ctx.fillRect(FX,FY,FW,FH);
   ctx.drawImage(swabCv,0,0);
   ctx.drawImage(stainCv,0,0);
@@ -1595,8 +1651,10 @@ function drawWound(){
   const L=S.L;
   const inc=S.steps.find(s=>s.t==='incise');
   const cp=L.preCut?1:(inc?inc.cp:0);
-  /* guide line pre-cut — also shown while prepping so you know where to swab */
-  if(S.step&&((S.step.t==='incise'&&inc&&inc.cp<1)||(S.step.t==='swab'&&cp<1))){
+  /* guide line pre-cut — also shown while prepping so you know where to swab.
+     HARDCORE: the mark shows only during prep; cutting is from memory. */
+  const guideOK=S.D.guide||S.step&&S.step.t==='swab';
+  if(S.step&&((S.step.t==='incise'&&inc&&inc.cp<1&&guideOK)||(S.step.t==='swab'&&cp<1))){
     const prep=S.step.t==='swab';
     ctx.setLineDash([7,7]);
     ctx.strokeStyle=prep?'rgba(20,40,80,.35)':'rgba(20,40,80,.55)';ctx.lineWidth=2;
@@ -1604,6 +1662,14 @@ function drawWound(){
     ctx.setLineDash([]);
     if(!prep){const s0=pathPt(inc.cp);
       ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,5,0,7);ctx.fill();}
+  }else if(S.step&&S.step.t==='incise'&&inc&&inc.cp<1&&!S.D.guide){
+    /* hardcore: only the end ticks and the cut head */
+    [PATHP[0],PATHP[PATHP.length-1]].forEach(p=>{
+      ctx.strokeStyle='rgba(20,40,80,.6)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(p.x+p.nx*8,p.y+p.ny*8);
+      ctx.lineTo(p.x-p.nx*8,p.y-p.ny*8);ctx.stroke();});
+    const s0=pathPt(inc.cp);
+    ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,4,0,7);ctx.fill();
   }
   /* anaesthetic sites live on the skin, outside the wound */
   if(S.step&&S.step.t==='inject')S.step.sites.forEach(s=>{
@@ -1632,6 +1698,13 @@ function drawWound(){
   else{wg.addColorStop(0,'#5e0d14');wg.addColorStop(.5,'#3a060c');wg.addColorStop(1,'#560c13');}
   ctx.fillStyle=wg;ctx.fill();
   ctx.save();ctx.clip();
+  /* subcutaneous fat band + inner wound-edge shadow */
+  ctx.beginPath();ctx.moveTo(top[0][0],top[0][1]);
+  top.forEach(p=>ctx.lineTo(p[0],p[1]));
+  for(let i=bot.length-1;i>=0;i--)ctx.lineTo(bot[i][0],bot[i][1]);
+  ctx.closePath();
+  if(!bone){ctx.strokeStyle='rgba(228,198,124,.5)';ctx.lineWidth=9;ctx.stroke();}
+  ctx.strokeStyle='rgba(36,5,8,.65)';ctx.lineWidth=3.5;ctx.stroke();
   /* interior detail follows the path */
   ctx.fillStyle=bone?'rgba(232,224,202,.55)':'rgba(150,30,40,.5)';
   for(let i=2;i<PATHP.length-2;i+=4){const p=PATHP[i];
@@ -1949,8 +2022,12 @@ function drawDish(){
   ctx.restore();
 }
 function drawParticles(){
-  S.parts.forEach(p=>{ctx.fillStyle=`rgba(190,16,30,${clamp(p.life,0,1)})`;
-    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill();});
+  /* droplets streak along their velocity — reads as real spatter */
+  ctx.lineCap='round';
+  S.parts.forEach(p=>{ctx.strokeStyle=`rgba(190,16,30,${clamp(p.life,0,1)})`;
+    ctx.lineWidth=p.r*1.5;
+    ctx.beginPath();ctx.moveTo(p.x,p.y);
+    ctx.lineTo(p.x-p.vx*.03,p.y-p.vy*.03);ctx.stroke();});
   S.sparks.forEach(p=>{ctx.fillStyle=p.c||`rgba(255,${160+Math.random()*80|0},60,${clamp(p.life*3,0,1)})`;
     ctx.globalAlpha=p.c?clamp(p.life*3,0,1):1;
     ctx.fillRect(p.x,p.y,2.5,2.5);ctx.globalAlpha=1;});
@@ -2010,10 +2087,11 @@ function drawHUD(){
   ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
   ctx.textAlign='left';ctx.fillStyle='#cfe3d8';ctx.font='700 16px '+mono;
   ctx.fillText('OP-'+String(S.idx+1).padStart(2,'0')+' · '+S.L.name.toUpperCase(),24,34);
-  ctx.fillStyle='#7fa192';ctx.font='10px '+mono;
-  ctx.fillText(S.L.site+(S.mod&&S.mod.id?'   ⚑ ':''),24,50);
+  const siteTxt=S.L.site+(S.D.label!=='NORMAL'?' · '+S.D.label:'');
+  ctx.fillStyle=S.D.label==='HARDCORE'?'#ff5f6b':'#7fa192';ctx.font='10px '+mono;
+  ctx.fillText(siteTxt,24,50);
   if(S.mod&&S.mod.id){ctx.fillStyle='#ff5f6b';
-    ctx.fillText('     '+S.mod.id.toUpperCase(),24+ctx.measureText(S.L.site).width,50);}
+    ctx.fillText('   ⚑ '+S.mod.id.toUpperCase(),24+ctx.measureText(siteTxt).width,50);}
   /* timer */
   const low=S.tLeft<25;
   ctx.textAlign='center';
@@ -2063,7 +2141,7 @@ function drawTray(){
   const mono=getComputedStyle(document.body).fontFamily;
   ctx.fillStyle='#0d1519';ctx.fillRect(0,652,W,68);
   ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,652);ctx.lineTo(W,652);ctx.stroke();
-  const need=neededTool();
+  const need=S.D.guide?neededTool():null;   /* hardcore: no tool hints */
   TOOLS.forEach((tl,i)=>{
     const x=36+i*86,y=658,w=80,h=56,sel=S.tool===i;
     ctx.fillStyle=sel?'rgba(70,232,150,.10)':'transparent';
@@ -2551,9 +2629,10 @@ function drawDefib(){
   /* gauge */
   ctx.fillStyle='#0d1519';ctx.fillRect(gx,gy,gw,gh);
   ctx.strokeStyle='#1e3038';ctx.strokeRect(gx,gy,gw,gh);
+  const zn=d.zone||.26;
   ctx.fillStyle='rgba(70,232,150,.28)';
-  ctx.fillRect(gx+gw*.62,gy,gw*.26,gh);
-  ctx.strokeStyle='#46e896';ctx.strokeRect(gx+gw*.62,gy,gw*.26,gh);
+  ctx.fillRect(gx+gw*(.75-zn/2),gy,gw*zn,gh);
+  ctx.strokeStyle='#46e896';ctx.strokeRect(gx+gw*(.75-zn/2),gy,gw*zn,gh);
   const pos=50+50*Math.sin(d.t*d.speed);
   ctx.fillStyle='#f4b942';ctx.fillRect(gx+gw*pos/100-3,gy-8,6,gh+16);
   ctx.fillStyle='#7fa192';ctx.font='11px '+mono;
