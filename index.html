@@ -453,6 +453,9 @@ const WARDS=[
  {name:'Ward V — Cardiothoracic',ops:['lung','aorta','lung','valve','aorta','bypass','valve','bypass','aorta','bypass']},
  {name:'Ward VI — Specialist Unit',ops:['cataract','burn','retinal','bowel','ribres','reattach','spinal','liverT','lungT','brainT']},
  {name:'Ward VII — Critical List',ops:['lapa','burr','esoph','panc','peri','aneur','bypass2','panc','lapa','multi']},
+ {name:'Ward VIII — Overnight Trauma',ops:['bullet','lapa','spleen','liver','reattach','burn','bowel','ribres','lapa','multi']},
+ {name:'Ward IX — Transplant Programme',ops:['kidT','liverT','lungT','panc','bowel','kidT','liverT','lungT','multi','multi']},
+ {name:'Ward X — Chief of Surgery',ops:['aneur','brainT','bypass2','valve','peri','esoph','spinal','cranio','bypass','multi']},
 ];
 const FIRST=['Rosa','Marcus','Dana','Elif','Johan','Priya','Tomas','Aiko','Lena','Omar','Nadia','Piotr','Sofia','Kwame','Ingrid','Mateo','Yara','Dmitri','Chloe','Ravi'];
 const LAST=['Alvarez','Okafor','Virtanen','Castellanos','Lindqvist','Beaumont','Ishikawa','N\'Diaye','Petrov','Marchetti','Haugen','Silva','Novak','Tanaka','Osei','Weber','Kaur','Moreau','Santos','Berg','Ferrell','Yamada','Kovac','Diallo'];
@@ -1325,7 +1328,8 @@ function startSurgery(idx,mod,bonusT){
      ares:false,qHold:false,qActing:null,qchains:{},
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a'],
-            ['#4a2e30','#341c1e']][L.ward||0]};
+            ['#4a2e30','#341c1e'],['#503a24','#382818'],['#24504e','#173736'],
+            ['#2a2a2e','#1a1a1e']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
   paintSkin(L.tone||1,L.site);
   stainCx.clearRect(0,0,W,H);swabCx.clearRect(0,0,W,H);
