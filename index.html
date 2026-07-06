@@ -984,11 +984,14 @@ function updateQuad(dt){
           b.clamped=true;clickS();spurt(b.x,b.y,6);
           if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
         continue;}
-      if(S.alert&&S.alert.type==='bp'){c.toolId='syringe';c.working=true;
+      if(S.alert&&(S.alert.type==='bp'||S.alert.type==='anaph')){c.toolId='syringe';c.working=true;
         const p=pathPt(.5);
         armGo(c,p.x,p.y,qs*1.3,dt);
         if(dist(c.ex,c.ey,p.x,p.y)<16){
-          resolveAlert(true);blip(600,.2,.08,'sine');say('Stabilizer in — ARES.',2);}
+          const wasAn=S.alert.type==='anaph';
+          resolveAlert(true);blip(600,.2,.08,'sine');
+          if(wasAn)S.bpm=Math.max(70,S.bpm-35);
+          say((wasAn?'Epinephrine':'Stabilizer')+' in — ARES.',2);}
         continue;}
     }
     const st=S.step;
@@ -1135,13 +1138,15 @@ function updateAuto(dt){
       if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR*.75){
         b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
         if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
-    }else if(S.alert&&S.alert.type==='bp'){ /* BP crash: administer stabilizer */
+    }else if(S.alert&&(S.alert.type==='bp'||S.alert.type==='anaph')){ /* crash meds */
       autoTool('syringe');acting=true;
       const p=pathPt(.5);
       autoMove(p.x,p.y,spE,dt);
       if(dist(mouse.x,mouse.y,p.x,p.y)<16){
+        const wasAn=S.alert.type==='anaph';
         resolveAlert(true);S.injT=.35;blip(600,.2,.08,'sine');
-        say('Stabilizer administered — automated.',2.5);}
+        if(wasAn)S.bpm=Math.max(70,S.bpm-35);
+        say((wasAn?'Epinephrine':'Stabilizer')+' administered — automated.',2.5);}
     }else if(st)switch(st.t){
       case 'swab':{
         autoTool('swab');acting=true;
@@ -1337,9 +1342,12 @@ function startSurgery(idx,mod,bonusT,demand){
   const events=Math.max(0,(L.events||0)+((mod&&mod.events)||0)+D.evt);
   const evts=[];
   const tTot=Math.round((L.time+F.extraTime)*D.time);
+  const types=['bleeder','bp','arrest'];
+  if(L.diff>=3)types.push('burst','seizure');
+  if(L.diff>=4)types.push('anaph','tension');
+  if(L.diff>=5)types.push('storm');
   for(let i=0;i<events;i++){
-    const types=['bleeder','bp','arrest'];
-    evts.push({at:rand(20,tTot*.72),type:types[Math.floor(Math.random()*types.length)],fired:false});
+    evts.push({at:rand(20,tTot*.8),type:types[Math.floor(Math.random()*types.length)],fired:false});
   }
   evts.sort((a,b)=>a.at-b.at);
   S={L,idx,mod,F,D,steps:buildSteps(L),si:-1,step:null,
@@ -1353,6 +1361,7 @@ function startSurgery(idx,mod,bonusT,demand){
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
      ares:false,qHold:false,qActing:null,qchains:{},
      demand:demand||null,violated:false,demWarned:false,robotT:0,minBlood:100,tTot,
+     pend:[],seizeT:0,tension:null,stormRe:false,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a'],
             ['#4a2e30','#341c1e'],['#503a24','#382818'],['#24504e','#173736'],
@@ -1459,15 +1468,24 @@ function onDown(x,y){
   /* tool tray */
   if(y>652){const i=Math.floor((x-36)/86);if(i>=0&&i<14)selectTool(i);return;}
   const st=S.step,tool=TOOLS[S.tool].id;
-  /* alert: bp injection */
-  if(S.alert&&S.alert.type==='bp'&&tool==='syringe'&&inField(x,y)){
+  /* alert: injections (BP crash / anaphylaxis) */
+  if(S.alert&&(S.alert.type==='bp'||S.alert.type==='anaph')&&tool==='syringe'&&inField(x,y)){
+    const wasAn=S.alert.type==='anaph';
     resolveAlert(true);S.injT=.35;
-    say('Stabilizer in. Pressure recovering.',3);blip(600,.2,.08,'sine');return;}
+    if(wasAn)S.bpm=Math.max(70,S.bpm-35);
+    say(wasAn?'Epinephrine in. Reaction breaking.':'Stabilizer in. Pressure recovering.',3);
+    blip(600,.2,.08,'sine');return;}
+  /* alert: tension pneumothorax — strike the mark with the scalpel */
+  if(S.alert&&S.alert.type==='tension'&&tool==='scalpel'&&S.tension&&
+     dist(x,y,S.tension.x,S.tension.y)<26){
+    spurt(S.tension.x,S.tension.y,8);S.tension=null;
+    resolveAlert(true);blip(400,.25,.09,'sine');
+    say('Decompressed — the lung re-expands. Good hands.',3);return;}
   /* clamp works any time there are bleeders */
   if(tool==='clamp'){
     for(const b of S.bleeders){if(!b.clamped&&dist(x,y,b.x,b.y)<S.F.clampR){
       b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
-      if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);
+      if(S.alert&&(S.alert.type==='bleeder'||S.alert.type==='burst')&&S.bleeders.every(q=>q.clamped))resolveAlert(true);
       return;}}}
   if(!st)return;
   switch(st.t){
@@ -1525,14 +1543,36 @@ function buyTime(){
 function abortSurgery(){if(!S)return;S.failReason='aborted';finish(false);}
 
 /* ============================== EVENTS/COMPLICATIONS ============================== */
+const queueEvt=(type,delay)=>S.pend.push({type,at:S.t+delay});
 function fireEvent(ev){
   ev.fired=true;alarm();S.shake=.5;
-  if(ev.type==='bleeder'){
+  const t=ev.type;
+  if(t==='bleeder'){
     const n=1+(S.L.diff>3?1:0);
     for(let i=0;i<n;i++)spawnBleeder(rand(.1,.9));
     S.alert={type:'bleeder',tLeft:S.F.evtWin,label:'HAEMORRHAGE — CLAMP IT'};
-  }else if(ev.type==='bp'){
+  }else if(t==='burst'){
+    const n=3+(S.L.diff>3?1:0);
+    for(let i=0;i<n;i++){spawnBleeder(rand(.08,.92));
+      S.bleeders[S.bleeders.length-1].rate=2.2;}
+    S.alert={type:'burst',tLeft:S.F.evtWin+3,label:'VESSEL RUPTURE — CLAMP EVERYTHING, NOW'};
+  }else if(t==='bp'){
     S.alert={type:'bp',tLeft:S.F.evtWin,label:'BP CRASHING — SYRINGE (9), CLICK PATIENT'};
+  }else if(t==='anaph'){
+    S.bpm=Math.min(170,S.bpm+42);
+    S.alert={type:'anaph',tLeft:Math.max(4,S.F.evtWin*.6),label:'ANAPHYLAXIS — EPINEPHRINE (9), CLICK PATIENT NOW'};
+  }else if(t==='tension'){
+    const p=pathPt(.5);
+    S.tension={x:clamp(p.x+rand(-140,140),FX+60,FX+FW-60),
+               y:clamp(p.y+rand(-100,100),FY+50,FY+FH-50)};
+    S.alert={type:'tension',tLeft:S.F.evtWin,label:'TENSION PNEUMO — SCALPEL (2), STRIKE THE MARK'};
+  }else if(t==='seizure'){
+    S.seizeT=6;
+    S.alert={type:'seizure',tLeft:6,label:'SEIZURE — RIDE IT OUT, HOLD STEADY'};
+  }else if(t==='storm'){
+    S.defib={t:0,attempts:2,speed:rand(2.4,3.1)*S.F.defibSpd*1.35,zone:S.F.defibZone*.75,storm:true};
+    S.bpm=0;flatline(true);
+    say('V-FIB STORM — two shocks, narrow window. Do not miss.',4.5);
   }else{
     S.defib={t:0,attempts:3,speed:rand(2.4,3.1)*S.F.defibSpd,zone:S.F.defibZone};
     S.bpm=0;flatline(true);
@@ -1550,8 +1590,12 @@ function tryShock(){
   shockS();S.shake=1;
   const z=(d.zone||.26)*100;
   if(pos>75-z/2&&pos<75+z/2){
+    const storm=d.storm;
     S.defib=null;S.bpm=95;flatline(false);S.handled++;
-    say('Sinus rhythm restored. Back to work.',3);
+    if(storm&&!S.stormRe&&Math.random()<.45){S.stormRe=true;
+      queueEvt('storm',rand(2.5,4.5));
+      say('Converted… but the rhythm looks ugly. Watch the monitor.',3.5);}
+    else say('Sinus rhythm restored. Back to work.',3);
   }else{
     d.attempts--;S.blood=Math.max(0,S.blood-6);
     if(d.attempts<=0){S.defib=null;S.missed++;killPatient('asystole');}
@@ -1619,14 +1663,34 @@ function update(dt){
   if(DEVOPT.god)S.blood=100;
   if(S.blood<=0){S.blood=0;killPatient('exsanguination');return;}
   if(S.blood<35&&S.bpm>0)S.bpm=Math.min(150,S.bpm+dt*6);
-  /* events */
-  for(const ev of S.evts)if(!ev.fired&&S.t>=ev.at&&!S.alert&&!S.defib){fireEvent(ev);break;}
+  /* seizure: the whole table shakes and the patient bleeds */
+  if(S.seizeT>0){S.seizeT-=dt;
+    S.shake=Math.max(S.shake,.55);
+    S.blood=Math.max(1,S.blood-dt*.5);}
+  /* events — chained emergencies fire first */
+  if(!S.alert&&!S.defib){
+    const pi=S.pend.findIndex(e=>S.t>=e.at);
+    if(pi>=0){const p=S.pend.splice(pi,1)[0];fireEvent({type:p.type});}
+    else for(const ev of S.evts)if(!ev.fired&&S.t>=ev.at){fireEvent(ev);break;}
+  }
   if(S.alert){S.alert.tLeft-=dt;
     if(S.alert.tLeft<=0){
-      const t=S.alert.type;resolveAlert(false);
-      S.blood=Math.max(1,S.blood-16);S.shake=.8;alarm();
-      say(t==='bp'?'Pressure bottomed out — blood lost':'Uncontrolled bleeding — blood lost',3);
-      if(t==='bleeder')S.bleeders.forEach(b=>b.clamped=true);
+      const t=S.alert.type;resolveAlert(t==='seizure');
+      S.shake=.8;if(t!=='seizure')alarm();
+      if(t==='bleeder'){S.blood=Math.max(1,S.blood-16);
+        S.bleeders.forEach(b=>b.clamped=true);
+        say('Uncontrolled bleeding — blood lost',3);}
+      else if(t==='burst'){S.blood=Math.max(1,S.blood-25);
+        say('Massive loss — and it is STILL bleeding. Clamp it!',3.5);}
+      else if(t==='bp'){S.blood=Math.max(1,S.blood-16);
+        say('Pressure bottomed out — blood lost',3);}
+      else if(t==='anaph'){S.blood=Math.max(1,S.blood-12);
+        queueEvt('arrest',1.2);
+        say('Anaphylactic collapse — they are ARRESTING',3.5);}
+      else if(t==='tension'){S.blood=Math.max(1,S.blood-10);S.tension=null;
+        S.bpm=Math.min(165,S.bpm+30);queueEvt('arrest',2);
+        say('Lung fully collapsed — arrest imminent',3.5);}
+      else if(t==='seizure')say('Seizure passed. Back to work.',2.5);
     }}
   if(S.defib){S.defib.t+=dt;S.blood=Math.max(1,S.blood-dt*1.6);}
   updateStep(dt);
@@ -1900,7 +1964,7 @@ function finish(success,fromDone){
   }
   /* reputation */
   const isDeath=!success&&['exsanguination','asystole','dev'].includes(S.failReason);
-  let repD=success?(stars===3?2:1):(isDeath?-8:-3);
+  let repD=success?(stars===3?2:1):(isDeath?-12:-3);
   if(S.demand&&success)repD+=demHonored?3:-8;
   const oldRep=save.rep;
   save.rep=clamp(Math.round(save.rep+repD),0,100);
@@ -1974,6 +2038,17 @@ function draw(){
   ctx.strokeStyle='#153029';ctx.lineWidth=5;roundRect(FX,FY,FW,FH,26);ctx.stroke();
   drawDish();
   drawParticles();
+  /* tension pneumothorax decompression mark */
+  if(S.tension){
+    const pu=1+Math.sin(S.t*8)*.18;
+    ctx.strokeStyle='rgba(255,60,70,.9)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(S.tension.x,S.tension.y,20*pu,0,7);ctx.stroke();
+    ctx.strokeStyle='rgba(255,60,70,.35)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(S.tension.x,S.tension.y,34*pu,0,7);ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(S.tension.x-10,S.tension.y);ctx.lineTo(S.tension.x+10,S.tension.y);
+    ctx.moveTo(S.tension.x,S.tension.y-10);ctx.lineTo(S.tension.x,S.tension.y+10);
+    ctx.strokeStyle='#ff3c46';ctx.lineWidth=2.5;ctx.stroke();}
   if(S.ares)drawQuadArms();
   drawScanFx();
   drawMonitor();
@@ -2635,8 +2710,9 @@ function drawTouchUI(){
   ctx.fillText('ACT',ACTB.x,ACTB.y+4);
 }
 function neededTool(){
+  if(S.alert&&(S.alert.type==='bp'||S.alert.type==='anaph'))return 'syringe';
+  if(S.alert&&S.alert.type==='tension')return 'scalpel';
   if(!S.step)return null;
-  if(S.alert&&S.alert.type==='bp')return 'syringe';
   if(S.bleeders.some(b=>!b.clamped))return 'clamp';
   return {swab:'swab',incise:'scalpel',clamp:'clamp',cauterize:'cautery',
     extract:'forceps',stones:'forceps',place:'forceps',suture:'suture',
