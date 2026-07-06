@@ -730,15 +730,23 @@ function toggleAuto(){
   if(!S.robot)S.robot=true;
   S.auto=!S.auto;clickS();
   if(!S.auto&&S.autoHeld){S.autoHeld=false;mouse.down=false;onUp();}
-  say(S.auto?'AUTOMATION ON — arm preps, irrigates, suctions & clamps bleeders itself'
+  say(S.auto?'AUTOMATION ON — prep, cautery, injections, suction, closure & emergencies are handled'
     :'Automation off — you have the instruments',3);
 }
 const autoTool=id=>{const i=TOOLS.findIndex(t=>t.id===id);if(S.tool!==i)S.tool=i;};
 function autoMove(tx,ty,sp,dt){
   const dx=tx-mouse.x,dy=ty-mouse.y,d=Math.hypot(dx,dy);
-  if(d<2)return;
-  const step=Math.min(d,sp*dt);
+  if(d<1.5)return;
+  const ease=clamp(d/50,.32,1);      /* decelerate on approach */
+  const step=Math.min(d,sp*ease*dt);
   mouse.x+=dx/d*step;mouse.y+=dy/d*step;
+}
+function nearestUndone(arr){
+  let b=null,bd=1e9;
+  for(const o of arr){if(o.done)continue;
+    const d=dist(mouse.x,mouse.y,o.x,o.y);
+    if(d<bd){bd=d;b=o;}}
+  return b;
 }
 function nearestSwabCell(st){
   let best=null,bd=1e9;
@@ -759,19 +767,56 @@ function updateAuto(dt){
       if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR){
         b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
         if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
-    }else if(st&&st.t==='swab'){
-      autoTool('swab');acting=true;
-      if(!S.autoTgt||dist(mouse.x,mouse.y,S.autoTgt.x,S.autoTgt.y)<10)S.autoTgt=nearestSwabCell(st);
-      if(S.autoTgt){autoMove(S.autoTgt.x,S.autoTgt.y,sp,dt);wantHold=true;}
-    }else if(st&&st.t==='irrigate'){
-      autoTool('swab');acting=true;
-      const p=pathPt(.5+.38*Math.sin(S.t*1.8));
-      autoMove(p.x,p.y,sp,dt);wantHold=true;
-    }else if(st&&st.t==='suction'){
-      autoTool('suction');acting=true;
-      const pl=st.pools.find(p=>!p.done);
-      if(pl){autoMove(pl.x,pl.y,sp,dt);
-        if(dist(mouse.x,mouse.y,pl.x,pl.y)<16)wantHold=true;}
+    }else if(S.alert&&S.alert.type==='bp'){ /* BP crash: administer stabilizer */
+      autoTool('syringe');acting=true;
+      const p=pathPt(.5);
+      autoMove(p.x,p.y,sp*1.2,dt);
+      if(dist(mouse.x,mouse.y,p.x,p.y)<16){
+        resolveAlert(true);S.injT=.35;blip(600,.2,.08,'sine');
+        say('Stabilizer administered — automated.',2.5);}
+    }else if(st)switch(st.t){
+      case 'swab':{
+        autoTool('swab');acting=true;
+        if(!S.autoTgt||dist(mouse.x,mouse.y,S.autoTgt.x,S.autoTgt.y)<10)S.autoTgt=nearestSwabCell(st);
+        if(S.autoTgt){autoMove(S.autoTgt.x,S.autoTgt.y,sp,dt);wantHold=true;}
+        break;}
+      case 'irrigate':{
+        autoTool('swab');acting=true;
+        const p=pathPt(.5+.38*Math.sin(S.t*1.8));
+        autoMove(p.x,p.y,sp,dt);wantHold=true;
+        break;}
+      case 'suction':{
+        autoTool('suction');acting=true;
+        const pl=nearestUndone(st.pools);
+        if(pl){autoMove(pl.x,pl.y,sp,dt);
+          if(dist(mouse.x,mouse.y,pl.x,pl.y)<16)wantHold=true;}
+        break;}
+      case 'cauterize':{
+        autoTool('cautery');acting=true;
+        const spn=nearestUndone(st.spots);
+        if(spn){autoMove(spn.x,spn.y,sp,dt);
+          if(dist(mouse.x,mouse.y,spn.x,spn.y)<14)wantHold=true;}
+        break;}
+      case 'inject':{
+        autoTool('syringe');acting=true;
+        const sn=nearestUndone(st.sites);
+        if(sn){autoMove(sn.x,sn.y,sp,dt);
+          if(dist(mouse.x,mouse.y,sn.x,sn.y)<10){
+            sn.done=true;S.injT=.35;blip(600,.12,.07,'sine');}}
+        break;}
+      case 'suture':{
+        autoTool('suture');acting=true;
+        const pt=nearestUndone(st.pts);
+        if(pt){autoMove(pt.x,pt.y,sp,dt);
+          if(dist(mouse.x,mouse.y,pt.x,pt.y)<12)wantHold=true;}
+        break;}
+      case 'staple':{
+        autoTool('stapler');acting=true;
+        const pt=nearestUndone(st.pts);
+        if(pt){autoMove(pt.x,pt.y,sp,dt);
+          if(dist(mouse.x,mouse.y,pt.x,pt.y)<12&&S.stapleT<=0){
+            pt.done=true;S.stapleT=.2;blip(210,.08,.1,'square');}}
+        break;}
     }
   }
   if(wantHold&&!S.autoHeld){S.autoHeld=true;mouse.down=true;}
