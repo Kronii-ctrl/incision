@@ -159,6 +159,7 @@
   <div class="sub" id="menu-prof" style="letter-spacing:.2em;margin:8px 0 2px"></div>
   <div class="menu-btns">
     <button class="btn" id="b-operate">Operate</button>
+    <button class="btn" id="b-er" style="color:#ff5f6b;border-color:#8a2430">🚑 Emergency Dispatch</button>
     <button class="btn amber" id="b-shop">Supply Depot</button>
     <button class="btn ghost" id="b-switch">Switch Surgeon</button>
     <button class="btn ghost" id="b-wipe">Reset Career</button>
@@ -186,6 +187,19 @@
     <div><span class="money" id="shop-money"></span>&nbsp;&nbsp;
     <button class="btn ghost" data-nav="menu">Back</button></div></div>
   <div class="grid" id="shop-grid"></div>
+</section>
+
+<section id="scr-call" class="scr" aria-label="Emergency call">
+  <div style="height:5vh"></div>
+  <div class="chart" style="border-color:#8a2430"><h2 style="color:#ff5f6b">📞 Emergency Call — Dispatch</h2>
+    <dl id="call-chart"></dl></div>
+  <div class="row">
+    <button class="btn" id="b-respond" style="color:#ff5f6b;border-color:#8a2430">Respond — Roll Out</button>
+    <button class="btn ghost" data-nav="menu">Decline</button>
+  </div>
+  <p class="howto">Drive with <b>WASD / arrows</b>, hold the <b>mouse</b> to steer toward it, or use the
+  <b>touch stick</b> · crashes hurt — and on the way back, they hurt the <b>patient</b> ·
+  the stability you deliver them with is the blood volume you operate on · <b>ESC</b> aborts the call</p>
 </section>
 
 <section id="scr-brief" class="scr" aria-label="Patient chart">
@@ -473,7 +487,7 @@ function flatline(on){const a=ac();if(!a)return;
   if(!on&&flatOsc){try{flatOsc.stop();}catch(e){}flatOsc=null;}}
 
 /* ============================== NAV ============================== */
-const screens=['login','menu','levels','shop','brief','result','or'];
+const screens=['login','menu','levels','shop','brief','call','result','or'];
 function show(name){screens.forEach(s=>$('scr-'+s).classList.toggle('on',s===name));
   document.body.classList.toggle('in-or',name==='or');
   if(name==='menu'){$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
@@ -699,13 +713,19 @@ function toGame(e){const r=cv.getBoundingClientRect();
 const TOUCH=navigator.maxTouchPoints>0||'ontouchstart' in window;
 const DPAD={x:112,y:498,r:64},ACTB={x:1206,y:596,r:44};
 const activePtrs={};
+let JOY=null;
 function updJoy(p){
   const dx=(p.x-DPAD.x)/DPAD.r,dy=(p.y-DPAD.y)/DPAD.r;
   const l=Math.hypot(dx,dy),k=l>1?1/l:1;
-  if(S)S.joy={x:dx*k,y:dy*k};
+  JOY={x:dx*k,y:dy*k};
 }
 cv.addEventListener('pointerdown',e=>{
   cv.setPointerCapture(e.pointerId);const p=toGame(e);ac();
+  if(DR){ /* ambulance: stick or hold-to-steer */
+    if(TOUCH&&dist(p.x,p.y,DPAD.x,DPAD.y)<DPAD.r+28){
+      activePtrs[e.pointerId]={t:'joy'};updJoy(p);return;}
+    mouse.x=p.x;mouse.y=p.y;mouse.down=true;return;
+  }
   if(S&&S.robot){
     /* touch widgets first */
     if(TOUCH&&dist(p.x,p.y,DPAD.x,DPAD.y)<DPAD.r+28){
@@ -732,7 +752,7 @@ cv.addEventListener('pointermove',e=>{
 function onPtrUp(e){
   const a=activePtrs[e.pointerId];
   if(a){delete activePtrs[e.pointerId];
-    if(a.t==='joy'){if(S)S.joy=null;}
+    if(a.t==='joy')JOY=null;
     else if(a.t==='act'){mouse.down=false;onUp();}
     return;}
   mouse.down=false;onUp();
@@ -754,7 +774,7 @@ addEventListener('keydown',e=>{
   if(e.key==='r'||e.key==='R')toggleRobot();
   if(e.key==='f'||e.key==='F')toggleAuto();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
-  if(e.key==='Escape')abortSurgery();
+  if(e.key==='Escape'){if(S)abortSurgery();else if(DR){stopDrive();show('menu');}}
 });
 addEventListener('keyup',e=>{
   KEYS[e.key.toLowerCase()]=false;
@@ -763,7 +783,7 @@ addEventListener('keyup',e=>{
 function toggleRobot(){
   if(!S||S.dead||S.done)return;
   if(save.gear.robot<1){say('No robotic arm installed — see the Supply Depot',2.5);return;}
-  S.robot=!S.robot;S.joy=null;mouse.down=false;onUp();clickS();
+  S.robot=!S.robot;JOY=null;mouse.down=false;onUp();clickS();
   if(!S.robot)S.auto=false;
   say(S.robot?(TOUCH?'ROBOTIC ARM ENGAGED — drag to steer, or pad + ACT'
     :'ROBOTIC ARM ENGAGED — mouse steers it; WASD + SPACE also work')
@@ -1244,7 +1264,8 @@ function killPatient(reason){
 /* ============================== UPDATE ============================== */
 function loop(now){
   const dt=Math.min((now-lastT)/1000,.05);lastT=now;
-  if(S){update(dt);if(S)draw();}
+  if(DR){updateDrive(dt);if(DR)drawDrive();}
+  else if(S){update(dt);if(S)draw();}
   if($('scr-or').classList.contains('on'))rafId=requestAnimationFrame(loop);
 }
 function update(dt){
@@ -1255,7 +1276,7 @@ function update(dt){
   if(S.robot&&!S.dead&&!S.done){
     let vx=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
     let vy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
-    if(S.joy){vx+=S.joy.x;vy+=S.joy.y;}
+    if(JOY){vx+=JOY.x;vy+=JOY.y;}
     const l=Math.hypot(vx,vy);
     if(l>.22){
       S.robHeld=(S.robHeld||0)+dt;
@@ -1555,7 +1576,7 @@ function finish(success,fromDone){
     pay=L.pay*payMul*dMul*.12*stepsFrac;
   }
   save.money+=Math.round(pay);
-  if(success)save.best[S.idx]=Math.max(save.best[S.idx]||0,stars);
+  if(success&&!S.er)save.best[S.idx]=Math.max(save.best[S.idx]||0,stars);
   persist();
   /* report */
   $('res-title').textContent=success?'Patient Saved':'Operation Failed';
@@ -1578,8 +1599,10 @@ function finish(success,fromDone){
   const idx=S.idx;
   const mk=(txt,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;
     b.textContent=txt;b.onclick=fn;btns.appendChild(b);};
-  if(success&&idx<LEVELS.length-1)mk('Next Patient','',()=>openBrief(idx+1));
-  mk(success?'Operate Again':'Retry','ghost',()=>openBrief(idx));
+  const wasER=S.er;
+  if(Math.random()<.3)mk('📞 Incoming: Emergency Call','',()=>openCall());
+  if(success&&!wasER&&idx<LEVELS.length-1)mk('Next Patient','',()=>openBrief(idx+1));
+  if(!wasER)mk(success?'Operate Again':'Retry','ghost',()=>openBrief(idx));
   mk('Supply Depot','amber',()=>show('shop'));
   mk('Roster','ghost',()=>show('levels'));
   if(success)cashS();
@@ -2163,8 +2186,8 @@ function drawTouchUI(){
   ctx.beginPath();
   ctx.moveTo(DPAD.x-DPAD.r+8,DPAD.y);ctx.lineTo(DPAD.x+DPAD.r-8,DPAD.y);
   ctx.moveTo(DPAD.x,DPAD.y-DPAD.r+8);ctx.lineTo(DPAD.x,DPAD.y+DPAD.r-8);ctx.stroke();
-  const j=S.joy||{x:0,y:0};
-  ctx.fillStyle=S.joy?'rgba(70,232,150,.5)':'rgba(70,232,150,.22)';
+  const j=JOY||{x:0,y:0};
+  ctx.fillStyle=JOY?'rgba(70,232,150,.5)':'rgba(70,232,150,.22)';
   ctx.beginPath();ctx.arc(DPAD.x+j.x*DPAD.r*.62,DPAD.y+j.y*DPAD.r*.62,20,0,7);ctx.fill();
   ctx.textAlign='center';ctx.fillStyle='#3d5a4e';ctx.font='9px '+mono;
   ctx.fillText('MOVE',DPAD.x,DPAD.y+DPAD.r+16);
@@ -2645,6 +2668,265 @@ function drawDeath(){
   ctx.fillText('FLATLINE',640,340);
   ctx.font='13px '+mono;ctx.fillStyle='#cfa0a4';
   ctx.fillText('Time of death: '+new Date().toLocaleTimeString(),640,376);
+}
+
+/* ============================== EMERGENCY DISPATCH ============================== */
+let DR=null,CALL=null;
+const CITY={min:-1240,gap:248,roadW:46,blocks:10};
+const STREETS=['Vesper Ave','Old Mill Rd','Harbour Line','Cutter St','Nightingale Blvd',
+  'Foundry Way','Elm & 9th','Docklands Loop','Kessler Bridge','Marrow Lane'];
+const ER_POOL=[0,1,5,10,14,15,17];   /* trauma-appropriate roster cases */
+function bRect(i,j){
+  const h=(((i+3)*73856093)^((j+7)*19349663))>>>0;
+  const inset=10+(h%3)*8;
+  const x0=CITY.min+i*CITY.gap+CITY.roadW+inset;
+  const y0=CITY.min+j*CITY.gap+CITY.roadW+inset;
+  const s=CITY.gap-2*(CITY.roadW+inset);
+  return{x:x0,y:y0,w:s,h:s,tone:h%4,win:(h>>4)%3};
+}
+const onRoadAxis=v=>{
+  const m=(((v-CITY.min)%CITY.gap)+CITY.gap)%CITY.gap;
+  return Math.min(m,CITY.gap-m)<CITY.roadW;
+};
+const onRoad=(x,y)=>onRoadAxis(x)||onRoadAxis(y);
+function openCall(){
+  const idx=ER_POOL[Math.floor(Math.random()*ER_POOL.length)];
+  const L=LEVELS[idx];
+  let k1,k2;
+  do{k1=Math.floor(rand(0,11));k2=Math.floor(rand(0,11));}
+  while(Math.abs(k1-5)+Math.abs(k2-5)<6);
+  CALL={idx,street:STREETS[Math.floor(Math.random()*STREETS.length)],
+    tx:CITY.min+k1*CITY.gap,ty:CITY.min+k2*CITY.gap};
+  const D=DIFFS[save.diffMode||'normal'];
+  $('call-chart').innerHTML=
+    `<dt>Caller</dt><dd>${L.patient[0]}, ${L.patient[1]} — conscious, deteriorating</dd>
+     <dt>Location</dt><dd>${CALL.street}</dd>
+     <dt>Report</dt><dd class="crit">${L.patient[2]}</dd>
+     <dt>Likely procedure</dt><dd>${L.name}</dd>
+     <dt>Callout fee</dt><dd class="warn">${fmt$(L.pay*1.6*D.pay)} + performance</dd>
+     <dt>Warning</dt><dd>Patient stability falls while you drive — collisions on the return leg injure them further.</dd>`;
+  show('call');
+}
+$('b-er').onclick=()=>{clickS();openCall();};
+$('b-respond').onclick=()=>{clickS();startDrive();};
+function startDrive(){
+  const cars=[];
+  for(let i=0;i<16;i++){
+    const vert=Math.random()<.5,line=CITY.min+Math.floor(rand(0,11))*CITY.gap;
+    cars.push({vert,line,pos:rand(CITY.min,-CITY.min),dir:Math.random()<.5?1:-1,
+      spd:rand(80,150),lane:Math.random()<.5?-16:16,tone:Math.floor(rand(0,4))});}
+  DR={x:0,y:0,vx:0,vy:0,ang:-Math.PI/2,t:0,phase:'out',
+    tx:CALL.tx,ty:CALL.ty,stab:100,cars,collT:0,loadT:0,sir:0,sirHigh:false,
+    caseIdx:CALL.idx,street:CALL.street};
+  JOY=null;mouse.down=false;
+  show('or');
+  lastT=performance.now();
+  cancelAnimationFrame(rafId);rafId=requestAnimationFrame(loop);
+}
+function stopDrive(){DR=null;JOY=null;mouse.down=false;}
+function updateDrive(dt){
+  const d=DR;d.t+=dt;d.collT=Math.max(0,d.collT-dt);
+  /* siren */
+  d.sir-=dt;
+  if(d.sir<=0){blip(d.sirHigh?988:659,.42,.04,'triangle');d.sirHigh=!d.sirHigh;d.sir=.55;}
+  if(d.phase==='load'){
+    d.loadT-=dt;d.vx=d.vy=0;
+    if(d.loadT<=0){d.phase='back';d.tx=0;d.ty=0;
+      blip(880,.2,.07,'sine');}
+    return;
+  }
+  /* patient stability */
+  d.stab-=dt*(d.phase==='back'?.6:.3);
+  if(d.stab<=0){endDrive(false);return;}
+  /* input: keys + stick + hold-mouse */
+  let ix=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
+  let iy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
+  if(JOY){ix+=JOY.x;iy+=JOY.y;}
+  if(mouse.down&&!JOY){
+    const wx=d.x+(mouse.x-640),wy=d.y+(mouse.y-386);
+    const dd=dist(wx,wy,d.x,d.y);
+    if(dd>36){ix+=(wx-d.x)/dd;iy+=(wy-d.y)/dd;}}
+  const il=Math.hypot(ix,iy);
+  const maxS=onRoad(d.x,d.y)?340:150;   /* off-road is slow going */
+  if(il>.2){
+    const k=Math.min(1,il);
+    d.vx+=((ix/il)*maxS*k-d.vx)*Math.min(1,dt*2.1);
+    d.vy+=((iy/il)*maxS*k-d.vy)*Math.min(1,dt*2.1);
+  }else{
+    d.vx*=Math.pow(.12,dt);d.vy*=Math.pow(.12,dt);
+  }
+  const spd=Math.hypot(d.vx,d.vy);
+  if(spd>12)d.ang=Math.atan2(d.vy,d.vx);
+  let nx=clamp(d.x+d.vx*dt,CITY.min+20,-CITY.min-20);
+  let ny=clamp(d.y+d.vy*dt,CITY.min+20,-CITY.min-20);
+  /* building collisions (check the 3x3 blocks around us) */
+  const bi=Math.floor((nx-CITY.min)/CITY.gap),bj=Math.floor((ny-CITY.min)/CITY.gap);
+  for(let di=-1;di<2;di++)for(let dj=-1;dj<2;dj++){
+    const ii=bi+di,jj=bj+dj;
+    if(ii<0||jj<0||ii>=CITY.blocks||jj>=CITY.blocks)continue;
+    const r=bRect(ii,jj),m=15;
+    if(nx>r.x-m&&nx<r.x+r.w+m&&ny>r.y-m&&ny<r.y+r.h+m){
+      const pl=nx-(r.x-m),pr=(r.x+r.w+m)-nx,pt=ny-(r.y-m),pb=(r.y+r.h+m)-ny;
+      const mn=Math.min(pl,pr,pt,pb);
+      if(mn===pl)nx=r.x-m;else if(mn===pr)nx=r.x+r.w+m;
+      else if(mn===pt)ny=r.y-m;else ny=r.y+r.h+m;
+      if(spd>90&&d.collT<=0){d.collT=.5;blip(90,.2,.14,'sawtooth');
+        if(d.phase==='back'){d.stab=Math.max(1,d.stab-5);}}
+      d.vx*=-.25;d.vy*=-.25;
+    }}
+  d.x=nx;d.y=ny;
+  /* traffic */
+  d.cars.forEach(c=>{
+    c.pos+=c.dir*c.spd*dt;
+    if(c.pos>-CITY.min)c.pos=CITY.min;if(c.pos<CITY.min)c.pos=-CITY.min;
+    const cx=c.vert?c.line+c.lane:c.pos,cy=c.vert?c.pos:c.line+c.lane;
+    if(dist(d.x,d.y,cx,cy)<34&&d.collT<=0){
+      d.collT=.6;blip(120,.25,.15,'sawtooth');
+      const ddx=d.x-cx,ddy=d.y-cy,l=Math.hypot(ddx,ddy)||1;
+      d.vx=ddx/l*160;d.vy=ddy/l*160;
+      if(d.phase==='back')d.stab=Math.max(1,d.stab-6);
+    }});
+  /* arrival */
+  if(dist(d.x,d.y,d.tx,d.ty)<70){
+    if(d.phase==='out'){d.phase='load';d.loadT=1.5;blip(520,.25,.08,'sine');}
+    else endDrive(true);
+  }
+}
+function endDrive(ok){
+  const d=DR;stopDrive();
+  if(!ok){
+    $('res-title').textContent='Patient Lost En Route';
+    $('res-title').className='result-big fail';
+    $('res-stars').textContent='';
+    $('res-dl').innerHTML=`<dt>Outcome</dt><dd class="crit">They didn't survive the ride. Drive cleaner, drive faster.</dd>
+      <dt>Response</dt><dd>${Math.round(d.t)}s on the road</dd><dt>Payout</dt><dd>$0</dd>`;
+    const btns=$('res-btns');btns.innerHTML='';
+    const mk=(txt,cls,fn)=>{const b=document.createElement('button');
+      b.className='btn '+cls;b.textContent=txt;b.onclick=fn;btns.appendChild(b);};
+    mk('Dispatch Again','',openCall);mk('Menu','ghost',()=>show('menu'));
+    show('result');return;
+  }
+  startSurgery(d.caseIdx,{id:'emergency',label:'EMERGENCY — field pickup, unstable',payx:1.6});
+  S.er=true;
+  S.blood=clamp(Math.round(d.stab),35,100);
+  say('Emergency arrival from '+d.street+' — volume at '+Math.round(S.blood)+'%. Move.',4.5);
+}
+function drawDrive(){
+  const d=DR,mono=getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle='#07090b';ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(640-d.x,386-d.y);
+  const vx0=d.x-680,vx1=d.x+680,vy0=d.y-440,vy1=d.y+440;
+  /* roads */
+  for(let k=0;k<=CITY.blocks;k++){
+    const r=CITY.min+k*CITY.gap;
+    if(r+CITY.roadW>vx0&&r-CITY.roadW<vx1){
+      ctx.fillStyle='#141c21';ctx.fillRect(r-CITY.roadW,vy0,CITY.roadW*2,vy1-vy0);
+      ctx.strokeStyle='rgba(70,232,150,.12)';ctx.lineWidth=2;ctx.setLineDash([16,22]);
+      ctx.beginPath();ctx.moveTo(r,vy0);ctx.lineTo(r,vy1);ctx.stroke();ctx.setLineDash([]);}
+    if(r+CITY.roadW>vy0&&r-CITY.roadW<vy1){
+      ctx.fillStyle='#141c21';ctx.fillRect(vx0,r-CITY.roadW,vx1-vx0,CITY.roadW*2);
+      ctx.strokeStyle='rgba(70,232,150,.12)';ctx.lineWidth=2;ctx.setLineDash([16,22]);
+      ctx.beginPath();ctx.moveTo(vx0,r);ctx.lineTo(vx1,r);ctx.stroke();ctx.setLineDash([]);}
+  }
+  /* buildings */
+  const tones=['#182430','#1d2a36','#14202a','#22303c'];
+  const i0=clamp(Math.floor((vx0-CITY.min)/CITY.gap),0,CITY.blocks-1);
+  const i1=clamp(Math.floor((vx1-CITY.min)/CITY.gap),0,CITY.blocks-1);
+  const j0=clamp(Math.floor((vy0-CITY.min)/CITY.gap),0,CITY.blocks-1);
+  const j1=clamp(Math.floor((vy1-CITY.min)/CITY.gap),0,CITY.blocks-1);
+  for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){
+    const r=bRect(i,j);
+    ctx.fillStyle=tones[r.tone];ctx.fillRect(r.x,r.y,r.w,r.h);
+    ctx.strokeStyle='#0a1216';ctx.lineWidth=2;ctx.strokeRect(r.x,r.y,r.w,r.h);
+    if(r.win){ctx.fillStyle='rgba(244,215,120,.24)';
+      for(let wx2=r.x+14;wx2<r.x+r.w-10;wx2+=22)
+        for(let wy2=r.y+14;wy2<r.y+r.h-10;wy2+=26)
+          if(((wx2+wy2)/12|0)%3!==0)ctx.fillRect(wx2,wy2,5,7);}
+  }
+  /* hospital pad */
+  ctx.fillStyle='#10181d';ctx.fillRect(-70,-70,140,140);
+  ctx.strokeStyle='#2a4438';ctx.strokeRect(-70,-70,140,140);
+  ctx.fillStyle='#46e896';ctx.font='700 34px '+mono;ctx.textAlign='center';
+  ctx.fillText('H',0,12);
+  ctx.font='9px '+mono;ctx.fillStyle='#7fa192';ctx.fillText('MERCY GENERAL',0,34);
+  /* scene marker */
+  if(d.phase==='out'){
+    const pu=1+Math.sin(d.t*5)*.15;
+    ctx.strokeStyle='rgba(255,60,70,.8)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(d.tx,d.ty,26*pu,0,7);ctx.stroke();
+    ctx.strokeStyle='rgba(255,60,70,.3)';
+    ctx.beginPath();ctx.arc(d.tx,d.ty,44*pu,0,7);ctx.stroke();
+    ctx.fillStyle='#ff3c46';ctx.fillRect(d.tx-3,d.ty-12,6,24);ctx.fillRect(d.tx-12,d.ty-3,24,6);
+  }
+  /* traffic */
+  d.cars.forEach(c=>{
+    const cx=c.vert?c.line+c.lane:c.pos,cy=c.vert?c.pos:c.line+c.lane;
+    if(cx<vx0||cx>vx1||cy<vy0||cy>vy1)return;
+    ctx.save();ctx.translate(cx,cy);if(c.vert)ctx.rotate(Math.PI/2);
+    ctx.fillStyle=['#26333c','#332a3a','#2a3a2e','#3a3026'][c.tone];
+    ctx.beginPath();ctx.roundRect(-17,-9,34,18,4);ctx.fill();
+    ctx.strokeStyle='#0a1216';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='rgba(244,215,120,.7)';
+    ctx.fillRect(c.dir>0?13:-16,-7,3,4);ctx.fillRect(c.dir>0?13:-16,3,3,4);
+    ctx.restore();});
+  /* ambulance */
+  ctx.save();ctx.translate(d.x,d.y);ctx.rotate(d.ang+Math.PI/2);
+  ctx.fillStyle='rgba(255,250,230,.06)';   /* headlights */
+  ctx.beginPath();ctx.moveTo(-10,-22);ctx.lineTo(-26,-110);ctx.lineTo(26,-110);ctx.lineTo(10,-22);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#dde6e8';ctx.beginPath();ctx.roundRect(-14,-26,28,52,6);ctx.fill();
+  ctx.strokeStyle='#4a565c';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#c0182a';ctx.fillRect(-14,-2,28,7);
+  ctx.fillStyle='#22303a';ctx.fillRect(-11,-22,22,10);
+  const fl=Math.floor(d.t*7)%2;
+  ctx.shadowBlur=12;
+  ctx.shadowColor=fl?'#ff3c46':'#4c9aff';
+  ctx.fillStyle=fl?'#ff3c46':'#4c9aff';ctx.fillRect(fl?-10:2,-28,8,5);
+  ctx.shadowBlur=0;
+  ctx.restore();
+  ctx.restore();
+  /* strobe wash on screen edges */
+  const flw=Math.floor(d.t*7)%2;
+  ctx.fillStyle=flw?'rgba(255,40,50,.045)':'rgba(60,140,255,.045)';
+  ctx.fillRect(0,0,W,H);
+  /* HUD */
+  ctx.fillStyle='#0d1519';ctx.fillRect(0,0,W,60);
+  ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
+  ctx.textAlign='left';ctx.fillStyle='#ff5f6b';ctx.font='700 16px '+mono;
+  ctx.fillText('🚑 EMERGENCY — '+d.street.toUpperCase(),24,34);
+  ctx.fillStyle='#7fa192';ctx.font='10px '+mono;
+  ctx.fillText(d.phase==='out'?'EN ROUTE TO SCENE':d.phase==='load'?'LOADING PATIENT':'RETURN TO MERCY GENERAL — PATIENT ABOARD',24,50);
+  ctx.textAlign='center';ctx.fillStyle='#46e896';ctx.font='700 24px '+mono;
+  ctx.fillText(Math.floor(d.t/60)+':'+String(Math.floor(d.t%60)).padStart(2,'0'),640,38);
+  /* stability */
+  ctx.textAlign='right';ctx.font='10px '+mono;ctx.fillStyle='#7fa192';
+  ctx.fillText('PATIENT STABILITY',W-24,24);
+  ctx.fillStyle='#12100e';ctx.fillRect(W-224,30,200,12);
+  ctx.fillStyle=d.stab>50?'#46e896':d.stab>25?'#f4b942':'#ff2e3e';
+  ctx.fillRect(W-224,30,200*d.stab/100,12);
+  ctx.strokeStyle='#1e3038';ctx.strokeRect(W-224,30,200,12);
+  /* target arrow */
+  const ta=Math.atan2(d.ty-d.y,d.tx-d.x);
+  const axp=640+Math.cos(ta)*150,ayp=386+Math.sin(ta)*150;
+  ctx.save();ctx.translate(axp,ayp);ctx.rotate(ta);
+  ctx.fillStyle=d.phase==='out'?'#ff5f6b':'#46e896';
+  ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-8,-9);ctx.lineTo(-3,0);ctx.lineTo(-8,9);ctx.closePath();ctx.fill();
+  ctx.restore();
+  ctx.textAlign='center';ctx.fillStyle='#7fa192';ctx.font='10px '+mono;
+  ctx.fillText(Math.round(dist(d.x,d.y,d.tx,d.ty)/8)+'m',axp,ayp+24);
+  if(d.phase==='load'){
+    ctx.fillStyle='rgba(4,7,9,.6)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#46e896';ctx.font='700 36px '+mono;
+    ctx.fillText('PATIENT LOADED',640,340);
+    ctx.font='13px '+mono;ctx.fillStyle='#cfe3d8';
+    ctx.fillText('Get them back. Every second and every crash counts.',640,376);}
+  /* touch stick */
+  if(TOUCH){
+    ctx.strokeStyle='rgba(70,232,150,.4)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(DPAD.x,DPAD.y,DPAD.r,0,7);ctx.stroke();
+    const j=JOY||{x:0,y:0};
+    ctx.fillStyle=JOY?'rgba(70,232,150,.5)':'rgba(70,232,150,.22)';
+    ctx.beginPath();ctx.arc(DPAD.x+j.x*DPAD.r*.62,DPAD.y+j.y*DPAD.r*.62,20,0,7);ctx.fill();}
+  drawPointer();
 }
 
 /* init — straight to the last surgeon if they have no password */
