@@ -749,12 +749,15 @@ function nearestUndone(arr){
   return b;
 }
 function nearestSwabCell(st){
-  let best=null,bd=1e9;
+  /* the incision line is prepped first, then the surrounding field */
+  let best=null,bd=1e9,bestCrit=null,bcd=1e9;
   for(let cx=FX+24;cx<FX+FW-16;cx+=34)for(let cy=FY+24;cy<FY+FH-16;cy+=34){
-    if(st.cells.has(Math.floor(cx/34)+','+Math.floor(cy/34)))continue;
+    const key=Math.floor(cx/34)+','+Math.floor(cy/34);
+    if(st.cells.has(key))continue;
     const d=dist(mouse.x,mouse.y,cx,cy);
+    if(st.crit&&st.crit.has(key)){if(d<bcd){bcd=d;bestCrit={x:cx,y:cy};}}
     if(d<bd){bd=d;best={x:cx,y:cy};}}
-  return best;
+  return bestCrit||best;
 }
 function updateAuto(dt){
   let wantHold=false,acting=false;
@@ -1008,8 +1011,13 @@ function nextStep(){
   const st=S.steps[S.si],L=S.L;
   S.step=st;
   switch(st.t){
-    case 'swab':{st.cells=new Set();st.need=110;
-      say('Prep the field — scrub antiseptic over the surgical site',4);break;}
+    case 'swab':{st.cells=new Set();st.need=100;
+      /* critical zone: the incision line itself must be prepped */
+      st.crit=new Set();
+      for(let i=0;i<PATHP.length;i+=2){const p=PATHP[i];
+        for(let o=-1;o<=1;o++)
+          st.crit.add(Math.floor((p.x+p.nx*o*30)/34)+','+Math.floor((p.y+p.ny*o*30)/34));}
+      say('Prep the field — and trace the incision line itself with antiseptic',4);break;}
     case 'scan':{const p=pathPt(rand(.3,.7));
       st.tx=p.x+rand(-30,30);st.ty=p.y+rand(-20,20);st.prog=0;st.sig=0;
       say('Locate the object — sweep the ultrasound probe, follow the signal',4);break;}
@@ -1262,7 +1270,11 @@ function updateStep(dt){
         else if(Math.random()<.3){swabCx.fillStyle='rgba(196,120,30,0.05)';
           swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,26,0,7);swabCx.fill();}
       }
-      if(st.cells.size>=st.need){S.accs.push(1);nextStep();}
+      let critLeft=0;
+      st.crit.forEach(c=>{if(!st.cells.has(c))critLeft++;});
+      if(st.cells.size>=st.need&&critLeft===0){S.accs.push(1);nextStep();}
+      else if(st.cells.size>=st.need&&critLeft>0&&S.msgT<=0)
+        say('The incision line itself is not sterile — trace the marked cut',3);
       break;}
     case 'scan':{
       const d=dist(mouse.x,mouse.y,st.tx,st.ty);
@@ -1583,13 +1595,15 @@ function drawWound(){
   const L=S.L;
   const inc=S.steps.find(s=>s.t==='incise');
   const cp=L.preCut?1:(inc?inc.cp:0);
-  /* guide line pre-cut */
-  if(inc&&inc.cp<1&&S.step&&S.step.t==='incise'){
-    ctx.setLineDash([7,7]);ctx.strokeStyle='rgba(20,40,80,.55)';ctx.lineWidth=2;
+  /* guide line pre-cut — also shown while prepping so you know where to swab */
+  if(S.step&&((S.step.t==='incise'&&inc&&inc.cp<1)||(S.step.t==='swab'&&cp<1))){
+    const prep=S.step.t==='swab';
+    ctx.setLineDash([7,7]);
+    ctx.strokeStyle=prep?'rgba(20,40,80,.35)':'rgba(20,40,80,.55)';ctx.lineWidth=2;
     ctx.beginPath();PATHP.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
     ctx.setLineDash([]);
-    const s0=pathPt(inc.cp);
-    ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,5,0,7);ctx.fill();
+    if(!prep){const s0=pathPt(inc.cp);
+      ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,5,0,7);ctx.fill();}
   }
   /* anaesthetic sites live on the skin, outside the wound */
   if(S.step&&S.step.t==='inject')S.step.sites.forEach(s=>{
