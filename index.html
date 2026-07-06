@@ -634,7 +634,7 @@ $('dv-kill').onclick=()=>{if(S&&!S.dead)killPatient('dev');};
 }catch(e){}})();
 
 function renderLevels(){
-  $('lv-money').textContent=fmt$(save.money);
+  $('lv-money').textContent=fmt$(save.money)+' · REP '+save.rep+' ('+repTitle(save.rep)+')';
   const g=$('level-grid');g.innerHTML='';
   /* intensity selector */
   const sel=document.createElement('div');sel.className='ward-head';
@@ -676,7 +676,7 @@ function renderLevels(){
   });
 }
 function renderShop(){
-  $('shop-money').textContent=fmt$(save.money);
+  $('shop-money').textContent=fmt$(save.money)+' · REP '+save.rep+' ('+repTitle(save.rep)+')';
   const g=$('shop-grid');g.innerHTML='';
   Object.entries(GEAR).forEach(([k,G])=>{
     const t=save.gear[k],max=t>=G.tiers.length-1;
@@ -2583,7 +2583,8 @@ function drawHUD(){
   /* money */
   ctx.textAlign='right';ctx.fillStyle='#f4b942';ctx.font='700 18px '+mono;
   ctx.fillText(fmt$(save.money),W-24,32);
-  ctx.fillStyle='#7fa192';ctx.font='9px '+mono;ctx.fillText('CREDIT · ESC ABORTS · M SOUND',W-24,48);
+  ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
+  ctx.fillText('REP '+save.rep+'/100 · '+repTitle(save.rep).toUpperCase()+' · PAY ×'+repMul().toFixed(2),W-24,48);
   /* instruction / alert banner */
   let msg=S.msgT>0?S.msg:'',col='#cfe3d8';
   if(S.alert){msg=S.alert.label+' — '+Math.ceil(S.alert.tLeft)+'s';col='#ff5f6b';}
