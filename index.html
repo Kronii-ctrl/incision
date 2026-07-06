@@ -207,9 +207,13 @@
   <div style="height:5vh"></div>
   <div class="chart" id="brief-chart"></div>
   <div class="row">
-    <button class="btn" id="b-scrub">Scrub In</button>
+    <button class="btn" id="b-scrub">Admit Patient</button>
+    <button class="btn ghost" id="b-direct">Straight to Theatre</button>
     <button class="btn ghost" data-nav="levels">Back</button>
   </div>
+  <p class="howto">Admission: wheel the gurney from the entrance to <b>OT-3</b> — dodge staff and
+  carts, every bump costs you — then hold to <b>sedate</b> and release in the green band.
+  A clean, quick admission earns bonus theatre time.</p>
 </section>
 
 <section id="scr-result" class="scr" aria-label="Operation report">
@@ -432,6 +436,14 @@ const T={
  lungT:{name:'Lung Transplant',site:'chest',fastBleed:1.3,mid:[['retract'],['extract','lung'],['place','lung'],['suction',2]],cond:'End-stage pulmonary fibrosis'},
  spinal:{name:'Spinal Fusion',site:'back',interior:'bone',closure:'staple',mid:[['drill',4],['place','plate'],['suction',2]],cond:'Unstable L4-L5 spondylolisthesis'},
  brainT:{name:'Brain Tumor Resection',site:'scalp',interior:'bone',mid:[['drill',3],['saw'],['extract','tumor'],['laser',3],['suction',2]],cond:'Glioma, eloquent cortex'},
+ lapa:{name:'Trauma Laparotomy',site:'abdomen',fastBleed:1.6,pre:[['scan']],closure:'staple',mid:[['retract'],['suction',3],['cauterize',4]],cond:'Polytrauma, free fluid on FAST'},
+ panc:{name:'Pancreatectomy',site:'abdomen',fastBleed:1.3,mid:[['retract'],['cauterize',4],['extract','pancreas'],['suction',3]],cond:'Pancreatic mass, obstructive'},
+ burr:{name:'Burr Hole Evacuation',site:'scalp',interior:'bone',mid:[['drill',2],['extract','clot'],['suction',2]],cond:'Chronic subdural collection'},
+ esoph:{name:'Esophageal Repair',site:'neck',mid:[['retract'],['inject',1],['cauterize',3],['suction',2]],cond:'Boerhaave tear, mediastinitis risk'},
+ peri:{name:'Pericardial Window',site:'chest',organ:'heart',mid:[['saw'],['suction',2],['cauterize',2]],cond:'Tamponade, effusion rising'},
+ aneur:{name:'Aneurysm Clipping',site:'scalp',interior:'bone',mid:[['drill',3],['saw'],['laser',2],['cauterize',2]],cond:'MCA aneurysm, unruptured'},
+ bypass2:{name:'Bypass Revision',site:'chest',organ:'heart',closure:'staple',mid:[['retract'],['cauterize',3],['extract','graft'],['place','graft']],cond:'Occluded graft, redo sternotomy'},
+ multi:{name:'Multi-Organ Transplant',site:'abdomen',fastBleed:1.3,mid:[['retract'],['extract','liver'],['place','liver'],['extract','kidney'],['place','kidney'],['suction',3]],cond:'Combined liver–kidney failure'},
 };
 const WARDS=[
  {name:'Ward I — Minor Surgery',ops:['lac','shard','lac','cystN','shard','absc','lac','cystN','absc','shard']},
@@ -440,6 +452,7 @@ const WARDS=[
  {name:'Ward IV — Ortho & Implant',ops:['pin','hip','disc','pin','pace','hip','disc','pace','cranio','cranio']},
  {name:'Ward V — Cardiothoracic',ops:['lung','aorta','lung','valve','aorta','bypass','valve','bypass','aorta','bypass']},
  {name:'Ward VI — Specialist Unit',ops:['cataract','burn','retinal','bowel','ribres','reattach','spinal','liverT','lungT','brainT']},
+ {name:'Ward VII — Critical List',ops:['lapa','burr','esoph','panc','peri','aneur','bypass2','panc','lapa','multi']},
 ];
 const FIRST=['Rosa','Marcus','Dana','Elif','Johan','Priya','Tomas','Aiko','Lena','Omar','Nadia','Piotr','Sofia','Kwame','Ingrid','Mateo','Yara','Dmitri','Chloe','Ravi'];
 const LAST=['Alvarez','Okafor','Virtanen','Castellanos','Lindqvist','Beaumont','Ishikawa','N\'Diaye','Petrov','Marchetti','Haugen','Silva','Novak','Tanaka','Osei','Weber','Kaur','Moreau','Santos','Berg','Ferrell','Yamada','Kovac','Diallo'];
@@ -739,7 +752,8 @@ function openBrief(i){
   </dl>`;
   show('brief');
 }
-$('b-scrub').onclick=()=>{clickS();startSurgery(briefIdx,briefMod);};
+$('b-scrub').onclick=()=>{clickS();startIntake(briefIdx,briefMod);};
+$('b-direct').onclick=()=>{clickS();startSurgery(briefIdx,briefMod);};
 
 /* ============================== CANVAS SETUP ============================== */
 const cv=$('cv'),ctx=cv.getContext('2d');
@@ -760,7 +774,7 @@ function updJoy(p){
 }
 cv.addEventListener('pointerdown',e=>{
   cv.setPointerCapture(e.pointerId);const p=toGame(e);ac();
-  if(DR){ /* ambulance: stick or hold-to-steer */
+  if(DR||IN){ /* ambulance/gurney: stick or hold-to-steer */
     if(TOUCH&&dist(p.x,p.y,DPAD.x,DPAD.y)<DPAD.r+28){
       activePtrs[e.pointerId]={t:'joy'};updJoy(p);return;}
     mouse.x=p.x;mouse.y=p.y;mouse.down=true;return;
@@ -814,7 +828,9 @@ addEventListener('keydown',e=>{
   if(e.key==='f'||e.key==='F')toggleAuto();
   if(e.key==='g'||e.key==='G')toggleAres();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
-  if(e.key==='Escape'){if(S)abortSurgery();else if(DR){stopDrive();show('menu');}}
+  if(e.key==='Escape'){if(S)abortSurgery();
+    else if(DR){stopDrive();show('menu');}
+    else if(IN){stopIntake();show('brief');}}
 });
 addEventListener('keyup',e=>{
   KEYS[e.key.toLowerCase()]=false;
@@ -1287,7 +1303,7 @@ function buildSteps(L){
   if(!L.noCut)s.push({t:L.closure==='staple'?'staple':'suture'});
   return s;
 }
-function startSurgery(idx,mod){
+function startSurgery(idx,mod,bonusT){
   const L=LEVELS[idx],F=fx(),D=DIFFS[save.diffMode||'normal'];
   const events=Math.max(0,(L.events||0)+((mod&&mod.events)||0)+D.evt);
   const evts=[];
@@ -1308,11 +1324,14 @@ function startSurgery(idx,mod){
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
      ares:false,qHold:false,qActing:null,qchains:{},
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
-            ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a']][L.ward||0]};
+            ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a'],
+            ['#4a2e30','#341c1e']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
   paintSkin(L.tone||1,L.site);
   stainCx.clearRect(0,0,W,H);swabCx.clearRect(0,0,W,H);
   nextStep();
+  if(bonusT){S.tLeft+=bonusT;
+    setTimeout(()=>{if(S)say('Smooth admission — +'+bonusT+'s theatre time',3);},4200);}
   show('or');
   lastT=performance.now();
   cancelAnimationFrame(rafId);rafId=requestAnimationFrame(loop);
@@ -1392,7 +1411,7 @@ const ORGAN_NAME={shard:'glass shard',appendix:'appendix',bullet:'bullet',tumor:
   spleen:'spleen',kidney:'kidney',graft:'vein graft',cyst:'cyst',thyroid:'thyroid lobe',
   liver:'liver segment',disc:'disc fragment',plate:'bone plate',pacemaker:'pacemaker',
   lung:'lung lobe',valve:'valve',clot:'clot',lens:'clouded lens',implant:'lens implant',
-  rib:'rib segment',bowel:'bowel segment',graftskin:'skin graft'};
+  rib:'rib segment',bowel:'bowel segment',graftskin:'skin graft',pancreas:'pancreas'};
 function spawnBleeder(u){const p=pathPt(u);
   S.bleeders.push({x:p.x+rand(-6,6),y:p.y+rand(-4,4),clamped:false,rate:rand(.8,1.3)});}
 
@@ -1515,7 +1534,8 @@ function killPatient(reason){
 /* ============================== UPDATE ============================== */
 function loop(now){
   const dt=Math.min((now-lastT)/1000,.05);lastT=now;
-  if(DR){updateDrive(dt);if(DR)drawDrive();}
+  if(IN){updateIntake(dt);if(IN)drawIntake();}
+  else if(DR){updateDrive(dt);if(DR)drawDrive();}
   else if(S){update(dt);if(S)draw();}
   if($('scr-or').classList.contains('on'))rafId=requestAnimationFrame(loop);
 }
@@ -1987,6 +2007,7 @@ function drawWound(){
   for(let i=2;i<PATHP.length-2;i+=4){const p=PATHP[i];
     const off=Math.sin(i*2.7)*8;
     ctx.beginPath();ctx.arc(p.x+p.nx*off,p.y+p.ny*off,9,0,7);ctx.fill();}
+  drawAnatomy(bone);
   /* beating heart backdrop for cardiac op */
   if(S.L.organ==='heart')drawOrgan('heart',pathPt(.5).x,pathPt(.5).y+4,1);
   /* step content inside wound */
@@ -2085,6 +2106,83 @@ function drawWound(){
   if(st2&&(st2.t==='extract'||st2.t==='place')&&(st2.organ.grabbed||st2.organ.byArm)&&!st2.organ.done)
     drawOrgan(st2.organ.kind,st2.organ.x,st2.organ.y,1);
   if(st2&&st2.t==='stones')st2.list.forEach(s=>{if((s.grabbed||s.byArm)&&!s.done)drawStone(s.x,s.y,s.r);});
+}
+/* site anatomy visible through the open wound */
+function drawAnatomy(bone){
+  const site=S.L.site;
+  ctx.save();
+  if(site==='ABDOMEN'&&!bone){
+    /* intestinal coils */
+    for(let i=3;i<PATHP.length-3;i+=5){
+      const p=PATHP[i],off=Math.sin(i*1.7)*9;
+      const cx2=p.x+p.nx*off,cy2=p.y+p.ny*off;
+      ctx.strokeStyle='rgba(198,124,116,.85)';ctx.lineWidth=12;ctx.lineCap='round';
+      ctx.beginPath();ctx.arc(cx2,cy2,9,Math.sin(i)*2,Math.sin(i)*2+3.6);ctx.stroke();
+      ctx.strokeStyle='rgba(240,190,185,.35)';ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(cx2,cy2-3,8,Math.sin(i)*2+.3,Math.sin(i)*2+3);ctx.stroke();}
+    /* liver edge along one side */
+    ctx.strokeStyle='rgba(84,24,15,.8)';ctx.lineWidth=14;
+    ctx.beginPath();
+    for(let i=4;i<PATHP.length-4;i+=4){const p=PATHP[i];
+      const px=p.x+p.nx*20,py=p.y+p.ny*20;
+      i===4?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+    ctx.stroke();
+  }else if(site==='CHEST'&&!bone){
+    /* rib shadows crossing the wound + lung tissue that breathes */
+    for(let i=6;i<PATHP.length-6;i+=10){const p=PATHP[i];
+      ctx.strokeStyle='rgba(226,217,194,.5)';ctx.lineWidth=9;
+      ctx.beginPath();
+      ctx.moveTo(p.x+p.nx*26,p.y+p.ny*26);ctx.lineTo(p.x-p.nx*26,p.y-p.ny*26);ctx.stroke();}
+    const pm=pathPt(.35);
+    const br=1+Math.sin(S.t*1.15)*.05*S.breathAmp;
+    ctx.fillStyle='rgba(200,120,128,.5)';
+    ctx.beginPath();ctx.ellipse(pm.x,pm.y,26*br,17*br,.4,0,7);ctx.fill();
+    ctx.strokeStyle='rgba(140,70,78,.4)';ctx.lineWidth=1.5;
+    for(let r2=0;r2<3;r2++){ctx.beginPath();
+      ctx.ellipse(pm.x,pm.y,(10+r2*7)*br,(6+r2*4.5)*br,.4,0,7);ctx.stroke();}
+  }else if(site==='NECK'){
+    /* trachea rings + carotid line */
+    const pm=pathPt(.5);
+    for(let r2=-2;r2<3;r2++){
+      ctx.strokeStyle='rgba(230,220,205,.6)';ctx.lineWidth=5;
+      ctx.beginPath();ctx.arc(pm.x+r2*13,pm.y,9,1.1,5.2);ctx.stroke();}
+    ctx.strokeStyle='rgba(160,40,50,.65)';ctx.lineWidth=4;
+    ctx.beginPath();
+    for(let i=2;i<PATHP.length-2;i+=4){const p=PATHP[i];
+      const px=p.x+p.nx*17,py=p.y+p.ny*17;
+      i===2?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+    ctx.stroke();
+  }else if(site==='BACK'){
+    /* vertebrae down the incision line */
+    for(let u=.15;u<.9;u+=.14){const p=pathPt(u);
+      ctx.fillStyle='rgba(232,224,202,.75)';
+      ctx.beginPath();ctx.roundRect(p.x-9,p.y-7,18,14,4);ctx.fill();
+      ctx.strokeStyle='rgba(120,108,84,.6)';ctx.lineWidth=1;ctx.stroke();
+      ctx.fillStyle='rgba(150,138,110,.5)';
+      ctx.beginPath();ctx.arc(p.x,p.y+9,3,0,7);ctx.fill();}
+  }else if(site==='SCALP'){
+    /* skull curve + cranial suture zigzag */
+    ctx.strokeStyle='rgba(120,108,84,.45)';ctx.lineWidth=1.5;
+    ctx.beginPath();
+    for(let i=2;i<PATHP.length-2;i++){const p=PATHP[i];
+      const off=Math.sin(i*3.1)*3+8;
+      const px=p.x+p.nx*off,py=p.y+p.ny*off;
+      i===2?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+    ctx.stroke();
+  }else if(site==='THIGH'||site==='CALF'||site==='FOREARM'){
+    /* muscle striation + the bone line beneath */
+    ctx.strokeStyle='rgba(140,30,38,.45)';ctx.lineWidth=2;
+    for(let i=2;i<PATHP.length-2;i+=3){const p=PATHP[i];
+      ctx.beginPath();
+      ctx.moveTo(p.x-14,p.y-6+Math.sin(i)*3);ctx.lineTo(p.x+14,p.y+6+Math.sin(i)*3);ctx.stroke();}
+    if(!bone){ctx.strokeStyle='rgba(230,222,200,.4)';ctx.lineWidth=7;
+      ctx.beginPath();
+      for(let i=3;i<PATHP.length-3;i+=5){const p=PATHP[i];
+        const px=p.x+p.nx*15,py=p.y+p.ny*15;
+        i===3?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+      ctx.stroke();}
+  }
+  ctx.restore();
 }
 function drawLaserSpots(){
   const st=S.step;
@@ -2263,6 +2361,19 @@ function drawOrgan(kind,x,y,s){
     ctx.strokeStyle='rgba(140,90,60,.3)';ctx.lineWidth=1;
     for(let k=-1;k<2;k++){ctx.beginPath();ctx.moveTo(-18,k*8);ctx.lineTo(18,k*8);ctx.stroke();
       ctx.beginPath();ctx.moveTo(k*12,-12);ctx.lineTo(k*12,12);ctx.stroke();}
+  }else if(kind==='pancreas'){
+    const g=ctx.createRadialGradient(-8,-4,3,0,0,30);
+    g.addColorStop(0,'#d8b788');g.addColorStop(1,'#9a7a4e');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.moveTo(-28,2);
+    for(let a=0;a<=1;a+=.1){
+      const px=-28+a*56,py=Math.sin(a*9)*3-(1-Math.abs(a-.2)*2)*9;
+      ctx.lineTo(px,py);}
+    for(let a=1;a>=0;a-=.1){
+      const px=-28+a*56,py=Math.sin(a*7)*3+(1-Math.abs(a-.25)*1.8)*9;
+      ctx.lineTo(px,py);}
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(90,64,30,.5)';ctx.lineWidth=1.5;ctx.stroke();
   }else if(kind==='kidney'||kind==='graft'){
     if(kind==='graft'){ctx.strokeStyle='#a24a5a';ctx.lineWidth=9;ctx.lineCap='round';
       ctx.beginPath();ctx.moveTo(-20,8);ctx.quadraticCurveTo(0,-16,20,6);ctx.stroke();
@@ -3035,6 +3146,179 @@ function drawDeath(){
   ctx.fillText('FLATLINE',640,340);
   ctx.font='13px '+mono;ctx.fillStyle='#cfa0a4';
   ctx.fillText('Time of death: '+new Date().toLocaleTimeString(),640,376);
+}
+
+/* ============================== HOSPITAL ADMISSION ============================== */
+let IN=null;
+const IN_WALLS=[            /* x,y,w,h — borders + partitions with gaps */
+ [26,66,1228,18],[26,66,18,628],[1236,66,18,628],[26,676,1228,18],
+ [470,66,20,250],[470,436,20,258],[850,240,20,454]];
+const IN_OBST=[             /* carts, desks, beds, plants */
+ [120,420,170,66,'desk'],[560,120,120,52,'cart'],[640,540,120,52,'cart'],
+ [980,470,150,60,'bed'],[320,120,44,44,'plant'],[1180,600,44,44,'plant'],
+ [520,330,44,44,'plant'],[904,150,150,60,'bed']];
+const IN_DOOR={x:1150,y:120};
+function startIntake(idx,mod){
+  IN={idx,mod,t:0,x:110,y:620,vx:0,vy:0,ang:-Math.PI/2,bumps:0,collT:0,
+    phase:'move',m:0,oops:0,
+    walkers:[
+      {x:700,y:300,axis:'y',min:130,max:640,spd:70,ph:0},
+      {x:380,y:560,axis:'x',min:80,max:440,spd:60,ph:2},
+      {x:1050,y:340,axis:'y',min:130,max:600,spd:85,ph:4}]};
+  JOY=null;mouse.down=false;
+  show('or');
+  lastT=performance.now();
+  cancelAnimationFrame(rafId);rafId=requestAnimationFrame(loop);
+}
+function stopIntake(){IN=null;JOY=null;mouse.down=false;}
+function updateIntake(dt){
+  const n=IN;n.t+=dt;n.collT=Math.max(0,n.collT-dt);
+  if(n.phase==='sedate'){
+    const held=mouse.down||KEYS[' '];
+    if(held)n.m=Math.min(104,n.m+46*dt);
+    if(n.m>98){n.m=34;n.oops++;blip(160,.25,.1,'square');
+      /* overshot — the meter dumps and you refill */}
+    if(!held&&n.m>=80&&n.m<=95){
+      const bonus=Math.max(0,Math.round(16-n.t*.32-n.bumps*2-n.oops*2));
+      const idx=n.idx,mod=n.mod;stopIntake();
+      blip(880,.25,.08,'sine');
+      startSurgery(idx,mod,bonus);
+      return;}
+    if(!held&&n.m>0&&n.m<80)n.m=Math.max(0,n.m-10*dt);
+    return;
+  }
+  /* gurney drive */
+  let ix=((KEYS['arrowright']||KEYS['d'])?1:0)-((KEYS['arrowleft']||KEYS['a'])?1:0);
+  let iy=((KEYS['arrowdown']||KEYS['s'])?1:0)-((KEYS['arrowup']||KEYS['w'])?1:0);
+  if(JOY){ix+=JOY.x;iy+=JOY.y;}
+  if(mouse.down&&!JOY){
+    const dd=dist(mouse.x,mouse.y,n.x,n.y);
+    if(dd>30){ix+=(mouse.x-n.x)/dd;iy+=(mouse.y-n.y)/dd;}}
+  const il=Math.hypot(ix,iy);
+  if(il>.2){const k=Math.min(1,il);
+    n.vx+=((ix/il)*235*k-n.vx)*Math.min(1,dt*2.4);
+    n.vy+=((iy/il)*235*k-n.vy)*Math.min(1,dt*2.4);
+  }else{n.vx*=Math.pow(.08,dt);n.vy*=Math.pow(.08,dt);}
+  const spd=Math.hypot(n.vx,n.vy);
+  if(spd>10)n.ang=Math.atan2(n.vy,n.vx);
+  let nx=n.x+n.vx*dt,ny=n.y+n.vy*dt;
+  const bump=()=>{if(spd>70&&n.collT<=0){n.collT=.5;n.bumps++;
+    blip(140,.15,.12,'square');}};
+  const solids=IN_WALLS.concat(IN_OBST);
+  for(const r of solids){
+    const m=14;
+    if(nx>r[0]-m&&nx<r[0]+r[2]+m&&ny>r[1]-m&&ny<r[1]+r[3]+m){
+      const pl=nx-(r[0]-m),pr=(r[0]+r[2]+m)-nx,pt=ny-(r[1]-m),pb=(r[1]+r[3]+m)-ny;
+      const mn=Math.min(pl,pr,pt,pb);
+      if(mn===pl)nx=r[0]-m;else if(mn===pr)nx=r[0]+r[2]+m;
+      else if(mn===pt)ny=r[1]-m;else ny=r[1]+r[3]+m;
+      bump();n.vx*=-.2;n.vy*=-.2;}}
+  n.x=clamp(nx,50,1230);n.y=clamp(ny,90,668);
+  /* staff walking the floor */
+  n.walkers.forEach(w=>{
+    const v=Math.sin(n.t*w.spd/60+w.ph);
+    if(w.axis==='y')w.y=w.min+(w.max-w.min)*(v*.5+.5);
+    else w.x=w.min+(w.max-w.min)*(v*.5+.5);
+    if(dist(n.x,n.y,w.x,w.y)<30&&n.collT<=0){
+      n.collT=.6;n.bumps++;blip(300,.12,.1,'triangle');
+      const ddx=n.x-w.x,ddy=n.y-w.y,l=Math.hypot(ddx,ddy)||1;
+      n.vx=ddx/l*120;n.vy=ddy/l*120;}});
+  if(dist(n.x,n.y,IN_DOOR.x,IN_DOOR.y)<58){
+    n.phase='sedate';n.vx=n.vy=0;blip(520,.2,.07,'sine');}
+}
+function drawIntake(){
+  const n=IN,mono=getComputedStyle(document.body).fontFamily;
+  /* floor */
+  ctx.fillStyle='#101a1f';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(70,232,150,.05)';ctx.lineWidth=1;
+  for(let x=44;x<1236;x+=56){ctx.beginPath();ctx.moveTo(x,84);ctx.lineTo(x,676);ctx.stroke();}
+  for(let y=84;y<676;y+=56){ctx.beginPath();ctx.moveTo(44,y);ctx.lineTo(1236,y);ctx.stroke();}
+  /* ceiling light pools */
+  for(const[lx,ly]of[[250,240],[660,320],[1050,240],[400,600],[950,580]]){
+    const g=ctx.createRadialGradient(lx,ly,10,lx,ly,170);
+    g.addColorStop(0,'rgba(255,250,225,.07)');g.addColorStop(1,'rgba(255,250,225,0)');
+    ctx.fillStyle=g;ctx.fillRect(lx-170,ly-170,340,340);}
+  /* walls */
+  IN_WALLS.forEach(r=>{ctx.fillStyle='#1e2c33';ctx.fillRect(r[0],r[1],r[2],r[3]);
+    ctx.strokeStyle='#0a1216';ctx.lineWidth=1.5;ctx.strokeRect(r[0],r[1],r[2],r[3]);});
+  /* fixtures */
+  IN_OBST.forEach(r=>{
+    if(r[4]==='plant'){
+      ctx.fillStyle='#26333a';ctx.beginPath();ctx.arc(r[0]+22,r[1]+22,18,0,7);ctx.fill();
+      ctx.fillStyle='#2c5c40';
+      for(let a=0;a<6;a++){ctx.beginPath();
+        ctx.ellipse(r[0]+22+Math.cos(a)*9,r[1]+22+Math.sin(a)*9,10,4,a,0,7);ctx.fill();}
+    }else{
+      ctx.fillStyle=r[4]==='desk'?'#3a3026':r[4]==='bed'?'#2c3d44':'#26333a';
+      ctx.beginPath();ctx.roundRect(r[0],r[1],r[2],r[3],6);ctx.fill();
+      ctx.strokeStyle='#0a1216';ctx.lineWidth=1.5;ctx.stroke();
+      if(r[4]==='bed'){ctx.fillStyle='#b8c4c8';
+        ctx.beginPath();ctx.roundRect(r[0]+8,r[1]+8,r[2]-16,r[3]-16,5);ctx.fill();}
+      if(r[4]==='desk'){ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
+        ctx.textAlign='center';ctx.fillText('RECEPTION',r[0]+r[2]/2,r[1]+r[3]/2+3);}}
+  });
+  /* OT doors */
+  ctx.fillStyle='#22303a';ctx.fillRect(IN_DOOR.x-52,66,104,20);
+  ctx.fillStyle=Math.sin(n.t*3)>0?'#ff5f6b':'#5e2228';
+  ctx.beginPath();ctx.arc(IN_DOOR.x,76,5,0,7);ctx.fill();
+  ctx.fillStyle='#dde6e8';ctx.fillRect(IN_DOOR.x-40,86,36,10);ctx.fillRect(IN_DOOR.x+4,86,36,10);
+  ctx.textAlign='center';ctx.fillStyle='#46e896';ctx.font='700 12px '+mono;
+  ctx.fillText('OT-3',IN_DOOR.x,112);
+  const pu=1+Math.sin(n.t*4)*.12;
+  ctx.strokeStyle='rgba(70,232,150,.5)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(IN_DOOR.x,IN_DOOR.y,40*pu,0,7);ctx.stroke();
+  /* entrance mark */
+  ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
+  ctx.fillText('ENTRANCE',110,668);
+  /* staff */
+  n.walkers.forEach(w=>{
+    ctx.fillStyle='#2e5844';ctx.beginPath();ctx.roundRect(w.x-9,w.y-11,18,22,7);ctx.fill();
+    ctx.fillStyle='#d09a7c';ctx.beginPath();ctx.arc(w.x,w.y-15,6,0,7);ctx.fill();});
+  /* gurney with patient */
+  ctx.save();ctx.translate(n.x,n.y);ctx.rotate(n.ang+Math.PI/2);
+  ctx.fillStyle='#0a1216';
+  for(const[wx,wy]of[[-12,-24],[12,-24],[-12,24],[12,24]]){
+    ctx.beginPath();ctx.arc(wx,wy,3.5,0,7);ctx.fill();}
+  ctx.fillStyle='#cfd8dc';ctx.beginPath();ctx.roundRect(-13,-28,26,56,7);ctx.fill();
+  ctx.strokeStyle='#4a565c';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#2e6b5e';ctx.beginPath();ctx.roundRect(-10,-8,20,32,5);ctx.fill();
+  ctx.fillStyle='#d09a7c';ctx.beginPath();ctx.arc(0,-16,7,0,7);ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.arc(0,-18,7,3.4,6);ctx.fill();
+  ctx.restore();
+  /* HUD */
+  ctx.fillStyle='#0d1519';ctx.fillRect(0,0,W,60);
+  ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
+  ctx.textAlign='left';ctx.fillStyle='#cfe3d8';ctx.font='700 16px '+mono;
+  ctx.fillText('ADMISSION — '+LEVELS[n.idx].patient[0].toUpperCase(),24,34);
+  ctx.fillStyle='#7fa192';ctx.font='10px '+mono;
+  ctx.fillText(n.phase==='move'?'WHEEL THE PATIENT TO OT-3 — GENTLY':'SEDATION — HOLD, RELEASE IN THE GREEN',24,50);
+  ctx.textAlign='center';ctx.fillStyle='#46e896';ctx.font='700 24px '+mono;
+  ctx.fillText(Math.floor(n.t/60)+':'+String(Math.floor(n.t%60)).padStart(2,'0'),640,38);
+  ctx.textAlign='right';ctx.fillStyle=n.bumps?'#f4b942':'#7fa192';ctx.font='11px '+mono;
+  ctx.fillText('BUMPS '+n.bumps,W-24,36);
+  if(n.phase==='sedate'){
+    ctx.fillStyle='rgba(4,7,9,.72)';ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';ctx.fillStyle='#46e896';ctx.font='700 30px '+mono;
+    ctx.fillText('SEDATION',640,260);
+    ctx.fillStyle='#cfe3d8';ctx.font='13px '+mono;
+    ctx.fillText('HOLD to push the plunger — RELEASE inside the green band',640,296);
+    const gx=390,gy=330,gw=500,gh=36;
+    ctx.fillStyle='#0d1519';ctx.fillRect(gx,gy,gw,gh);
+    ctx.strokeStyle='#1e3038';ctx.strokeRect(gx,gy,gw,gh);
+    ctx.fillStyle='rgba(70,232,150,.28)';ctx.fillRect(gx+gw*.8,gy,gw*.15,gh);
+    ctx.strokeStyle='#46e896';ctx.strokeRect(gx+gw*.8,gy,gw*.15,gh);
+    ctx.fillStyle=n.m>95?'#ff5f6b':'#7fd4ff';
+    ctx.fillRect(gx,gy,gw*Math.min(1,n.m/100),gh);
+    ctx.fillStyle='#7fa192';ctx.font='11px '+mono;
+    ctx.fillText('PROPOFOL '+Math.round(n.m)+'%'+(n.oops?'   ·   overshoots: '+n.oops:''),640,gy+gh+26);}
+  /* touch stick */
+  if(TOUCH&&n.phase==='move'){
+    ctx.strokeStyle='rgba(70,232,150,.4)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(DPAD.x,DPAD.y,DPAD.r,0,7);ctx.stroke();
+    const j=JOY||{x:0,y:0};
+    ctx.fillStyle=JOY?'rgba(70,232,150,.5)':'rgba(70,232,150,.22)';
+    ctx.beginPath();ctx.arc(DPAD.x+j.x*DPAD.r*.62,DPAD.y+j.y*DPAD.r*.62,20,0,7);ctx.fill();}
+  drawPointer();
 }
 
 /* ============================== EMERGENCY DISPATCH ============================== */
