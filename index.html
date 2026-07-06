@@ -880,119 +880,198 @@ function toggleAres(){
   if(!n){say('ARES-IV not installed — see the Supply Depot',2.5);return;}
   S.ares=!S.ares;clickS();
   if(S.ares){S.robot=false;S.auto=false;JOY=null;
-    say('ARES-IV ONLINE — '+n+'/4 arms. The theatre works for you.',3);}
-  else{say('ARES-IV standby. Your hands, doctor.',2.5);
-    if(S.qHold){S.qHold=false;mouse.down=false;onUp();}}
+    say('ARES-IV ONLINE — '+n+'/4 arms working in parallel. Your hands stay free.',3);}
+  else say('ARES-IV standby. Your hands, doctor.',2.5);
 }
+/* each arm has its own effector and works the field directly — the mouse stays yours */
+function armGo(c,tx,ty,sp,dt){
+  const dx=tx-c.ex,dy=ty-c.ey,d=Math.hypot(dx,dy);
+  if(d<1.5)return true;
+  const ease=clamp(d/50,.3,1);
+  const step=Math.min(d,sp*ease*dt);
+  c.ex+=dx/d*step;c.ey+=dy/d*step;
+  return d<9;
+}
+function parkArm(c,k,i,qs,dt){
+  c.toolId=null;
+  armGo(c,QHOME[k]+34,QRAILY+128+Math.sin(S.t*1.1+i*1.7)*6,qs*.7,dt);
+}
+function qClaim(arr,c,claimed){
+  let b=null,bd=1e9;
+  for(const o of arr){if(o.done||o.byArm||claimed.has(o))continue;
+    const d=dist(c.ex,c.ey,o.x,o.y);if(d<bd){bd=d;b=o;}}
+  if(b)claimed.add(b);
+  return b;
+}
+function qSwabCell(st,c,claimed){
+  let best=null,bd=1e9,bc=null,bcd=1e9;
+  for(let cx=FX+24;cx<FX+FW-16;cx+=34)for(let cy=FY+24;cy<FY+FH-16;cy+=34){
+    const key=Math.floor(cx/34)+','+Math.floor(cy/34);
+    if(st.cells.has(key)||claimed.has(key))continue;
+    const d=dist(c.ex,c.ey,cx,cy);
+    if(st.crit&&st.crit.has(key)){if(d<bcd){bcd=d;bc={x:cx,y:cy,key};}}
+    if(d<bd){bd=d;best={x:cx,y:cy,key};}}
+  return bc||best;
+}
+const QMULTI=['swab','inject','suction','cauterize','drill','laser','suture','staple','stones'];
 function updateQuad(dt){
-  let wantHold=false,acting=null;
-  const A=save.quad.arms,st=S.step;
-  const qs=190*(1+.15*(save.quad.tier||0));
-  const move=(tx,ty,mul)=>autoMove(tx,ty,qs*(mul||1),dt);
-  if(!S.dead&&!S.done){
-    if(S.defib){
-      if(A.hemo){acting='hemo';
+  const A=save.quad.arms;
+  const spdF=1+.15*(save.quad.tier||0),qs=190*spdF;
+  const claimed=new Set();
+  let i=0;
+  for(const k of Object.keys(QHOME)){
+    if(!A[k])continue;
+    i++;
+    const c=qChain(k);
+    c.working=false;c.cool=Math.max(0,(c.cool||0)-dt);
+    if(S.dead||S.done){parkArm(c,k,i,qs,dt);continue;}
+    /* hemostasis arm answers emergencies above all else */
+    if(k==='hemo'){
+      if(S.defib){c.toolId='syringe';c.working=true;
+        armGo(c,640,340,qs*1.3,dt);
         const dd=S.defib,pos=50+50*Math.sin(dd.t*dd.speed),z=(dd.zone||.26)*100;
-        if(Math.abs(pos-75)<z/2-3)tryShock();}
-    }else{
+        if(Math.abs(pos-75)<z/2-3)tryShock();
+        continue;}
       const b=S.bleeders.find(x=>!x.clamped);
-      if(b&&A.hemo){acting='hemo';autoTool('clamp');
-        move(b.x,b.y,1.25);
-        if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR){
-          b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
-          if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}}
-      else if(S.alert&&S.alert.type==='bp'&&A.hemo){acting='hemo';autoTool('syringe');
-        const p=pathPt(.5);move(p.x,p.y,1.25);
-        if(dist(mouse.x,mouse.y,p.x,p.y)<16){
-          resolveAlert(true);S.injT=.35;blip(600,.2,.08,'sine');
-          say('Stabilizer in — ARES.',2);}}
-      else if(st){
-        const arm=qArmFor(st.t);
-        if(arm&&A[arm]){acting=arm;
-          switch(st.t){
-            case 'swab':{autoTool('swab');
-              if(!S.autoTgt||dist(mouse.x,mouse.y,S.autoTgt.x,S.autoTgt.y)<10)S.autoTgt=nearestSwabCell(st);
-              if(S.autoTgt){move(S.autoTgt.x,S.autoTgt.y);wantHold=true;}break;}
-            case 'irrigate':{autoTool('swab');
-              const p=pathPt(.5+.38*Math.sin(S.t*1.4));
-              move(p.x,p.y);wantHold=true;break;}
-            case 'inject':{autoTool('syringe');
-              const sn=nearestUndone(st.sites);
-              if(sn){move(sn.x,sn.y);
-                if(dist(mouse.x,mouse.y,sn.x,sn.y)<7){sn.done=true;S.injT=.35;blip(600,.12,.07,'sine');}}
-              break;}
-            case 'suction':{autoTool('suction');
-              const pl=nearestUndone(st.pools);
-              if(pl){move(pl.x,pl.y);
-                if(dist(mouse.x,mouse.y,pl.x,pl.y)<12)wantHold=true;}
-              break;}
-            case 'cauterize':{autoTool('cautery');
-              const spn=nearestUndone(st.spots);
-              if(spn){move(spn.x,spn.y);
-                if(dist(mouse.x,mouse.y,spn.x,spn.y)<10)wantHold=true;}
-              break;}
-            case 'scan':{autoTool('probe');
-              move(st.tx,st.ty);break;}
-            case 'incise':{autoTool('scalpel');
-              const p=pathPt(Math.min(1,st.cp+.018));
-              move(p.x,p.y,1.1);
-              if(dist(mouse.x,mouse.y,p.x,p.y)<10){st.cutting=true;wantHold=true;}
-              break;}
-            case 'drill':{autoTool('drill');
-              const spn=nearestUndone(st.spots);
-              if(spn){move(spn.x,spn.y);
-                if(dist(mouse.x,mouse.y,spn.x,spn.y)<10)wantHold=true;}
-              break;}
-            case 'saw':{autoTool('saw');
-              const u=.5+.5*Math.sin(S.t*5);
-              move(st.ax+(st.bx-st.ax)*u,st.ay+(st.by-st.ay)*u,1.5);
-              wantHold=true;break;}
-            case 'laser':{autoTool('laser');
-              const spn=nearestUndone(st.spots);
-              if(spn){move(spn.x,spn.y);
-                if(dist(mouse.x,mouse.y,spn.x,spn.y)<6)wantHold=true;}
-              break;}
-            case 'retract':{autoTool('retractor');
-              const p=pathPt(.5);
-              if(!st.grabbed&&!st.done){move(p.x,p.y);
-                if(dist(mouse.x,mouse.y,p.x,p.y)<12){st.grabbed=true;st.sx=mouse.x;st.sy=mouse.y;}}
-              else if(st.grabbed){wantHold=true;
-                move(st.sx+p.nx*(S.F.retDrag+16),st.sy+p.ny*(S.F.retDrag+16),.7);}
-              break;}
-            case 'extract': case 'place':{autoTool('forceps');
-              const o=st.organ;
-              if(o.done)break;
-              if(!o.grabbed){move(o.x,o.y);
-                if(dist(mouse.x,mouse.y,o.x,o.y)<14)o.grabbed=true;}
-              else{wantHold=true;
-                const tgt=o.placing?pathPt(.5):DISH;
-                move(tgt.x,tgt.y,.55);}   /* slow carry — physically cannot tear */
-              break;}
-            case 'stones':{autoTool('forceps');
-              const s2=st.list.find(q=>!q.done&&q.grabbed)||nearestUndone(st.list);
-              if(s2){if(!s2.grabbed){move(s2.x,s2.y);
-                  if(dist(mouse.x,mouse.y,s2.x,s2.y)<12)s2.grabbed=true;}
-                else{wantHold=true;move(DISH.x,DISH.y,.55);}}
-              break;}
-            case 'suture':{autoTool('suture');
-              const pt=nearestUndone(st.pts);
-              if(pt){move(pt.x,pt.y);
-                if(dist(mouse.x,mouse.y,pt.x,pt.y)<8)wantHold=true;}
-              break;}
-            case 'staple':{autoTool('stapler');
-              const pt=nearestUndone(st.pts);
-              if(pt){move(pt.x,pt.y);
-                if(dist(mouse.x,mouse.y,pt.x,pt.y)<8&&S.stapleT<=0){
-                  pt.done=true;S.stapleT=.2;blip(210,.08,.1,'square');}}
-              break;}
-          }
-        }
-      }
+      if(b){c.toolId='clamp';c.working=true;
+        armGo(c,b.x,b.y,qs*1.3,dt);
+        if(dist(c.ex,c.ey,b.x,b.y)<S.F.clampR){
+          b.clamped=true;clickS();spurt(b.x,b.y,6);
+          if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}
+        continue;}
+      if(S.alert&&S.alert.type==='bp'){c.toolId='syringe';c.working=true;
+        const p=pathPt(.5);
+        armGo(c,p.x,p.y,qs*1.3,dt);
+        if(dist(c.ex,c.ey,p.x,p.y)<16){
+          resolveAlert(true);blip(600,.2,.08,'sine');say('Stabilizer in — ARES.',2);}
+        continue;}
+    }
+    const st=S.step;
+    if(!st){parkArm(c,k,i,qs,dt);continue;}
+    const domain=qArmFor(st.t);
+    /* the domain module must be installed; then any free arm may assist on multi-target work */
+    if(!domain||!A[domain]||(k!==domain&&!QMULTI.includes(st.t))){
+      parkArm(c,k,i,qs,dt);continue;}
+    c.working=true;
+    switch(st.t){
+      case 'swab':{c.toolId='swab';
+        if(!c.tgt||!c.tgt.key||st.cells.has(c.tgt.key))c.tgt=qSwabCell(st,c,claimed);
+        if(c.tgt&&c.tgt.key){claimed.add(c.tgt.key);
+          if(armGo(c,c.tgt.x,c.tgt.y,qs,dt))swabAt(c.ex,c.ey);}
+        break;}
+      case 'irrigate':{c.toolId='swab';
+        const p=pathPt(.5+.38*Math.sin(S.t*1.2));
+        armGo(c,p.x,p.y,qs,dt);
+        if(inWoundArea(c.ex,c.ey)){st.prog+=dt*.5;
+          stainCx.save();stainCx.globalCompositeOperation='destination-out';
+          stainCx.beginPath();stainCx.arc(c.ex,c.ey,26,0,7);stainCx.fill();stainCx.restore();}
+        break;}
+      case 'inject':{c.toolId='syringe';
+        const sn=qClaim(st.sites,c,claimed);
+        if(sn&&armGo(c,sn.x,sn.y,qs,dt)&&dist(c.ex,c.ey,sn.x,sn.y)<7){
+          sn.done=true;blip(600,.12,.07,'sine');}
+        break;}
+      case 'suction':{c.toolId='suction';
+        const pl=qClaim(st.pools,c,claimed);
+        if(pl&&armGo(c,pl.x,pl.y,qs,dt)&&dist(c.ex,c.ey,pl.x,pl.y)<14){
+          pl.prog+=dt/S.F.sucT;
+          stainCx.save();stainCx.globalCompositeOperation='destination-out';
+          stainCx.beginPath();stainCx.arc(pl.x,pl.y,18,0,7);stainCx.fill();stainCx.restore();
+          if(pl.prog>=1){pl.done=true;blip(70,.12,.07,'triangle');}}
+        break;}
+      case 'cauterize':{c.toolId='cautery';
+        const spn=qClaim(st.spots,c,claimed);
+        if(spn&&armGo(c,spn.x,spn.y,qs,dt)&&dist(c.ex,c.ey,spn.x,spn.y)<12){
+          spn.prog+=dt/S.F.cautT;
+          if(Math.random()<.5)spark(spn.x,spn.y);
+          if(spn.prog>=1){spn.done=true;blip(200,.1,.06,'sawtooth');}}
+        break;}
+      case 'drill':{c.toolId='drill';
+        const spn=qClaim(st.spots,c,claimed);
+        if(spn&&armGo(c,spn.x,spn.y,qs,dt)&&dist(c.ex,c.ey,spn.x,spn.y)<12){
+          spn.prog+=dt/1.7;
+          if(Math.random()<.6)spark(spn.x,spn.y,'#e8e2d0');
+          if(spn.prog>=1){spn.done=true;blip(90,.15,.08,'square');}}
+        break;}
+      case 'laser':{c.toolId='laser';
+        const spn=qClaim(st.spots,c,claimed);
+        if(spn&&armGo(c,spn.x,spn.y,qs,dt)&&dist(c.ex,c.ey,spn.x,spn.y)<7){
+          spn.prog+=dt/S.F.laserT;
+          if(Math.random()<.35)spark(spn.x,spn.y,'#ff8a7e');
+          if(spn.prog>=1){spn.done=true;blip(520,.12,.06,'sine');}}
+        break;}
+      case 'suture':{c.toolId='suture';
+        const pt=qClaim(st.pts,c,claimed);
+        if(pt&&armGo(c,pt.x,pt.y,qs,dt)&&dist(c.ex,c.ey,pt.x,pt.y)<9){
+          pt.prog+=dt/S.F.stitchT;
+          if(pt.prog>=1&&!pt.done){pt.done=true;clickS();}}
+        break;}
+      case 'staple':{c.toolId='stapler';
+        const pt=qClaim(st.pts,c,claimed);
+        if(pt&&armGo(c,pt.x,pt.y,qs,dt)&&dist(c.ex,c.ey,pt.x,pt.y)<9&&c.cool<=0){
+          pt.done=true;c.cool=.25;S.stapleT=.2;blip(210,.08,.1,'square');}
+        break;}
+      case 'stones':{c.toolId='forceps';
+        let s2=st.list.find(q=>q.byArm===k&&!q.done);
+        if(!s2){s2=qClaim(st.list,c,claimed);if(s2)s2.byArm=k;}
+        if(s2){claimed.add(s2);
+          if(!s2.carry){armGo(c,s2.x,s2.y,qs,dt);
+            if(dist(c.ex,c.ey,s2.x,s2.y)<9)s2.carry=true;}
+          else{armGo(c,DISH.x,DISH.y,qs*.6,dt);s2.x=c.ex;s2.y=c.ey;
+            if(insideDish(s2.x,s2.y)){s2.done=true;s2.byArm=null;s2.carry=false;
+              s2.x=DISH.x+rand(-28,28);s2.y=DISH.y+rand(-12,12);
+              blip(700,.08,.06,'sine');}}}
+        break;}
+      case 'extract': case 'place':{c.toolId='forceps';
+        const o=st.organ;if(o.done)break;
+        if(!o.carry){armGo(c,o.x,o.y,qs,dt);
+          if(dist(c.ex,c.ey,o.x,o.y)<11){o.carry=true;o.byArm=k;}}
+        else{const tgt=o.placing?pathPt(.5):DISH;
+          armGo(c,tgt.x,tgt.y,qs*.55,dt);o.x=c.ex;o.y=c.ey;
+          if(o.placing){const t2=pathPt(.5);
+            if(dist(o.x,o.y,t2.x,t2.y)<10){o.done=true;o.carry=false;o.byArm=null;
+              o.x=t2.x;o.y=t2.y+4;blip(500,.15,.07,'sine');S.accs.push(1);nextStep();}}
+          else if(insideDish(o.x,o.y)){o.done=true;o.carry=false;o.byArm=null;
+            o.x=DISH.x+rand(-20,20);o.y=DISH.y+rand(-8,8);
+            blip(500,.15,.07,'sine');S.accs.push(1);nextStep();}}
+        break;}
+      case 'scan':{c.toolId='probe';
+        armGo(c,st.tx,st.ty,qs,dt);
+        const d2=dist(c.ex,c.ey,st.tx,st.ty);
+        if(d2<S.F.scanLock){st.prog+=dt/S.F.scanT;
+          if(Math.random()<.15)blip(760,.05,.04,'sine');
+          if(st.prog>=1){S.accs.push(1);blip(980,.2,.08,'sine');
+            say('Object located — ARES.',2.5);nextStep();}}
+        break;}
+      case 'incise':{c.toolId='scalpel';
+        const p=pathPt(Math.min(1,st.cp+.01));
+        armGo(c,p.x,p.y,qs*1.2,dt);
+        if(dist(c.ex,c.ey,p.x,p.y)<12){
+          st.cp=Math.min(1,st.cp+.1*spdF*dt);S.cutBloodT=.3;
+          if(Math.random()<.3){const q=pathPt(st.cp);spurt(q.x,q.y,1);}
+          if(st.cp>=.995){S.accs.push(1);nextStep();}}
+        break;}
+      case 'saw':{c.toolId='saw';
+        const u=.5+.5*Math.sin(S.t*5);
+        armGo(c,st.ax+(st.bx-st.ax)*u,st.ay+(st.by-st.ay)*u,qs*1.6,dt);
+        st.prog=clamp(st.prog+dt*.2*spdF,0,1);
+        if(Math.random()<.4)spark(c.ex,c.ey,'#e8e2d0');
+        if(Math.random()<.2)blip(90+Math.random()*60,.05,.04,'sawtooth');
+        if(st.prog>=1){S.accs.push(1);blip(70,.2,.09,'sawtooth');
+          say('Through — ARES.',2);nextStep();}
+        break;}
+      case 'retract':{c.toolId='retractor';
+        const p=pathPt(.5);
+        const pull=20+st.prog*36;
+        armGo(c,p.x+p.nx*pull,p.y+p.ny*pull,qs*.8,dt);
+        if(dist(c.ex,c.ey,p.x,p.y)>16&&!st.done){
+          st.prog=clamp(st.prog+dt*.45*spdF,0,1);
+          if(st.prog>=1){st.done=true;S.accs.push(1);blip(320,.12,.07,'sine');
+            say('Exposure — ARES.',2);nextStep();}}
+        break;}
+      default:parkArm(c,k,i,qs,dt);
     }
   }
-  if(wantHold&&!S.qHold){S.qHold=true;mouse.down=true;}
-  if(!wantHold&&S.qHold){S.qHold=false;mouse.down=false;onUp();}
-  S.qActing=acting;
 }
 function updateAuto(dt){
   let wantHold=false,acting=false;
@@ -1347,12 +1426,12 @@ function onDown(x,y){
         if(dist(x,y,p.x,p.y)<30)st.cutting=true;}
       break;
     case 'extract': case 'place':{
-      if(tool==='forceps'&&!st.organ.done&&dist(x,y,st.organ.x,st.organ.y)<34){
+      if(tool==='forceps'&&!st.organ.done&&!st.organ.byArm&&dist(x,y,st.organ.x,st.organ.y)<34){
         st.organ.grabbed=true;clickS();}
       break;}
     case 'stones':{
       if(tool==='forceps')for(const s of st.list){
-        if(!s.done&&!s.grabbed&&dist(x,y,s.x,s.y)<26){s.grabbed=true;clickS();break;}}
+        if(!s.done&&!s.grabbed&&!s.byArm&&dist(x,y,s.x,s.y)<26){s.grabbed=true;clickS();break;}}
       break;}
     case 'inject':{
       if(tool==='syringe')for(const s of st.sites){
@@ -1504,20 +1583,7 @@ function updateStep(dt){
   const tool=TOOLS[S.tool].id;
   switch(st.t){
     case 'swab':{
-      if(mouse.down&&tool==='swab'&&inField(mouse.x,mouse.y)){
-        /* prep-kit tier widens the applicator: mark every cell under the head */
-        const R=S.F.swabR;let markedNew=false;
-        for(let gx=Math.floor((mouse.x-R)/34);gx<=Math.floor((mouse.x+R)/34);gx++)
-          for(let gy=Math.floor((mouse.y-R)/34);gy<=Math.floor((mouse.y+R)/34);gy++){
-            const ccx=gx*34+17,ccy=gy*34+17;
-            if(dist(mouse.x,mouse.y,ccx,ccy)>R||!inField(ccx,ccy))continue;
-            const key=gx+','+gy;
-            if(!st.cells.has(key)){st.cells.add(key);markedNew=true;}}
-        if(markedNew){swabCx.fillStyle='rgba(196,120,30,0.34)';
-          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,R,0,7);swabCx.fill();}
-        else if(Math.random()<.3){swabCx.fillStyle='rgba(196,120,30,0.05)';
-          swabCx.beginPath();swabCx.arc(mouse.x,mouse.y,R-4,0,7);swabCx.fill();}
-      }
+      if(mouse.down&&tool==='swab'&&inField(mouse.x,mouse.y))swabAt(mouse.x,mouse.y);
       let critLeft=0;
       st.crit.forEach(c=>{if(!st.cells.has(c))critLeft++;});
       if(st.cells.size>=st.need&&critLeft===0){S.accs.push(1);nextStep();}
@@ -1693,6 +1759,21 @@ function updateStep(dt){
   }
 }
 const insideDish=(x,y)=>((x-DISH.x)/DISH.rx)**2+((y-DISH.y)/DISH.ry)**2<1;
+/* antiseptic application at a point — used by the player's swab and by ARES arms */
+function swabAt(x,y){
+  const st=S.step;if(!st||st.t!=='swab')return;
+  const R=S.F.swabR;let markedNew=false;
+  for(let gx=Math.floor((x-R)/34);gx<=Math.floor((x+R)/34);gx++)
+    for(let gy=Math.floor((y-R)/34);gy<=Math.floor((y+R)/34);gy++){
+      const ccx=gx*34+17,ccy=gy*34+17;
+      if(dist(x,y,ccx,ccy)>R||!inField(ccx,ccy))continue;
+      const key=gx+','+gy;
+      if(!st.cells.has(key)){st.cells.add(key);markedNew=true;}}
+  if(markedNew){swabCx.fillStyle='rgba(196,120,30,0.34)';
+    swabCx.beginPath();swabCx.arc(x,y,R,0,7);swabCx.fill();}
+  else if(Math.random()<.3){swabCx.fillStyle='rgba(196,120,30,0.05)';
+    swabCx.beginPath();swabCx.arc(x,y,R-4,0,7);swabCx.fill();}
+}
 function inWoundArea(x,y){
   let d=1e9;
   for(let i=0;i<PATHP.length;i+=2){const p=PATHP[i];
@@ -2001,9 +2082,9 @@ function drawWound(){
     ctx.setLineDash([]);}
   /* organ mid-drag outside wound clip */
   const st2=S.step;
-  if(st2&&(st2.t==='extract'||st2.t==='place')&&st2.organ.grabbed&&!st2.organ.done)
+  if(st2&&(st2.t==='extract'||st2.t==='place')&&(st2.organ.grabbed||st2.organ.byArm)&&!st2.organ.done)
     drawOrgan(st2.organ.kind,st2.organ.x,st2.organ.y,1);
-  if(st2&&st2.t==='stones')st2.list.forEach(s=>{if(s.grabbed&&!s.done)drawStone(s.x,s.y,s.r);});
+  if(st2&&st2.t==='stones')st2.list.forEach(s=>{if((s.grabbed||s.byArm)&&!s.done)drawStone(s.x,s.y,s.r);});
 }
 function drawLaserSpots(){
   const st=S.step;
@@ -2815,7 +2896,8 @@ const QHOME={prep:220,hemo:440,resect:840,micro:1060};
 const QLENS=[105,130,135,115,75];   /* 5 links = 6 axes: base·shoulder·elbow·elbow·wrist·flange */
 function qChain(k){
   let c=S.qchains[k];
-  if(!c){c={bx:QHOME[k],pts:[]};
+  if(!c){c={bx:QHOME[k],pts:[],ex:QHOME[k]+34,ey:QRAILY+128,
+      toolId:null,working:false,cool:0,tgt:null};
     for(let i=0;i<=QLENS.length;i++)c.pts.push({x:QHOME[k],y:QRAILY+10+i*30});
     S.qchains[k]=c;}
   return c;
@@ -2854,14 +2936,12 @@ function drawQuadArms(){
   for(const k of Object.keys(QHOME)){
     i++;
     if(!A[k])continue;
-    const act=S.qActing===k;
     const c=qChain(k);
-    /* carriage slides toward the work point (offset so the arm reaches at an angle) */
-    const bxT=act?clamp(mouse.x-90,150,1110):QHOME[k];
+    const act=c.working;
+    /* carriage slides toward the arm's own work point */
+    const bxT=act?clamp(c.ex-90,150,1110):QHOME[k];
     c.bx+=(bxT-c.bx)*.06;
-    let ex,ey;
-    if(act){ex=mouse.x;ey=Math.max(mouse.y,110);}
-    else{ex=c.bx+34;ey=QRAILY+128+Math.sin(S.t*1.1+i*1.7)*6;}
+    const ex=c.ex,ey=Math.max(c.ey,106);
     fabrik(c.pts,c.bx,QRAILY+10,ex,ey);
     const pts=c.pts;
     /* carriage */
@@ -2903,16 +2983,18 @@ function drawQuadArms(){
     ctx.textAlign='left';ctx.font='8px '+mono;
     ctx.fillStyle='rgba(127,161,146,.85)';
     ctx.fillText('A'+i+'·'+k.toUpperCase(),c.bx-9,QRAILY);
-    if(act){ctx.save();ctx.translate(ex,ey);
-      drawToolHeld(TOOLS[S.tool].id,toolAnim());ctx.restore();}
+    if(c.toolId){ /* each arm carries its own instrument, animated by its task */
+      const AMAP={swab:'scrub',cautery:'heat',drill:'spin',saw:'saw',
+        laser:'fire',suction:'suck',suture:'stitch'};
+      const an={};
+      if(act){const f=AMAP[c.toolId];if(f)an[f]=true;
+        if(c.toolId==='forceps'||c.toolId==='retractor')an.grip=true;}
+      ctx.save();ctx.translate(ex,ey);ctx.scale(.9,.9);
+      drawToolHeld(c.toolId,an);ctx.restore();}
   }
 }
 function drawCursor(){
   if(S.robot)return drawRobotArm();
-  if(S.ares&&S.qActing){ /* the quad arm holds the tool; just mark the point */
-    ctx.strokeStyle='rgba(244,185,66,.6)';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.arc(mouse.x,mouse.y,14,0,7);ctx.stroke();
-    return;}
   if(mouse.y>652||mouse.y<60)return drawPointer();
   ctx.save();ctx.translate(mouse.x,mouse.y);ctx.scale(1.15,1.15);
   drawToolHeld(TOOLS[S.tool].id,toolAnim());
