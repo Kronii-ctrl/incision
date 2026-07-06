@@ -258,7 +258,10 @@ function normalizeSave(){
   save.quad=save.quad||{arms:{},tier:0};
   save.quad.arms=save.quad.arms||{};
   save.quad.tier=save.quad.tier||0;
+  if(typeof save.rep!=='number')save.rep=50;
 }
+const repTitle=r=>r<20?'Probationer':r<40?'Resident':r<60?'Attending':r<80?'Senior Surgeon':'Chief of Surgery';
+const repMul=()=>.8+save.rep*.004;
 function loadSaveFor(name){
   save=defaultSave();
   try{const s=JSON.parse(localStorage.getItem(saveKeyFor(name)));
@@ -482,6 +485,19 @@ WARDS.forEach((w,wi)=>{w.ops.forEach((k,oi)=>{
               x1:cx+Math.cos(ang)*len/2, y1:cy+Math.sin(ang)*len/2, bend},
   });
 });});
+/* patient demands — ignore them and the fee suffers, and so does your name */
+const DEMANDS=[
+ {id:'noRobot', tag:'NO ROBOTICS',  label:'“Human hands only. I don’t trust machines.” — robotics forbidden',w:3},
+ {id:'proRobot',tag:'WANTS ROBOT',  label:'“I’m paying for the robot.” — the machine must do most of the work',w:2},
+ {id:'clean',   tag:'NO SCAR',      label:'“I will not have a scar.” — keep precision above 85%',w:3},
+ {id:'swift',   tag:'IN A HURRY',   label:'“I have somewhere to be.” — finish with 20% of the clock left',w:2},
+ {id:'blood',   tag:'BLOOD-WARY',   label:'“My blood stays in my body.” — never drop below 70% volume',w:2},
+];
+function pickDemand(L){
+  if(L.diff<2||Math.random()>.45)return null;
+  const pool=[];DEMANDS.forEach(d=>{for(let i=0;i<d.w;i++)pool.push(d);});
+  return pool[Math.floor(Math.random()*pool.length)];
+}
 const MODS=[
  {id:null,w:5},
  {id:'hemophiliac',w:2,label:'HEMOPHILIAC — bleeds 50% faster',bleed:1.5,payx:1.3},
@@ -511,7 +527,8 @@ const screens=['login','menu','levels','shop','brief','call','result','or'];
 function show(name){screens.forEach(s=>$('scr-'+s).classList.toggle('on',s===name));
   document.body.classList.toggle('in-or',name==='or');
   if(name==='menu'){$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
-    $('menu-prof').textContent='SURGEON · '+(currentProfile||'');}
+    $('menu-prof').textContent='SURGEON · '+(currentProfile||'')+
+      ' — '+repTitle(save.rep)+' · REP '+save.rep+'/100';}
   if(name==='levels')renderLevels();if(name==='shop')renderShop();
   if(name==='login')renderLogin();}
 document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{clickS();show(b.dataset.nav);}));
@@ -733,12 +750,12 @@ function renderShop(){
 }
 
 /* ============================== BRIEFING ============================== */
-let briefIdx=0,briefMod=null;
+let briefIdx=0,briefMod=null,briefDemand=null;
 function pickMod(L){if(L.diff<2)return MODS[0];
   const pool=[];MODS.forEach(m=>{for(let i=0;i<m.w;i++)pool.push(m);});
   return pool[Math.floor(Math.random()*pool.length)];}
 function openBrief(i){
-  briefIdx=i;const L=LEVELS[i];briefMod=pickMod(L);
+  briefIdx=i;const L=LEVELS[i];briefMod=pickMod(L);briefDemand=pickDemand(L);
   const F=fx(),D=DIFFS[save.diffMode||'normal'];
   const totalTime=Math.round((L.time+F.extraTime)*D.time);
   const payMul=briefMod.payx||1;
@@ -752,11 +769,13 @@ function openBrief(i){
     <dt>Theatre time</dt><dd>${totalTime}s${F.extraTime?` <span class="warn">(+${F.extraTime}s contract)</span>`:''}</dd>
     <dt>Base fee</dt><dd class="warn">${fmt$(L.pay*payMul*D.pay)}</dd>
     <dt>Flags</dt><dd class="${briefMod.id?'crit':''}">${briefMod.id?briefMod.label:'None. Routine case.'}</dd>
+    <dt>Patient demand</dt><dd class="${briefDemand?'crit':''}">${briefDemand?briefDemand.label+' <span class="warn">(ignore it: 40% fee withheld, reputation −8)</span>':'None — do it your way.'}</dd>
+    <dt>Your standing</dt><dd>${repTitle(save.rep)} — reputation ${save.rep}/100 (pay ×${repMul().toFixed(2)})</dd>
   </dl>`;
   show('brief');
 }
-$('b-scrub').onclick=()=>{clickS();startIntake(briefIdx,briefMod);};
-$('b-direct').onclick=()=>{clickS();startSurgery(briefIdx,briefMod);};
+$('b-scrub').onclick=()=>{clickS();startIntake(briefIdx,briefMod,briefDemand);};
+$('b-direct').onclick=()=>{clickS();startSurgery(briefIdx,briefMod,0,briefDemand);};
 
 /* ============================== CANVAS SETUP ============================== */
 const cv=$('cv'),ctx=cv.getContext('2d');
@@ -845,6 +864,9 @@ function toggleRobot(){
   S.robot=!S.robot;JOY=null;mouse.down=false;onUp();clickS();
   if(!S.robot)S.auto=false;
   if(S.robot)S.ares=false;
+  if(S.robot&&S.demand&&S.demand.id==='noRobot'&&!S.violated){
+    S.violated=true;
+    say('The patient FORBADE robotics. The family saw everything.',3.5);}
   say(S.robot?(TOUCH?'ROBOTIC ARM ENGAGED — drag to steer, or pad + ACT'
     :'ROBOTIC ARM ENGAGED — mouse steers it; WASD + SPACE also work')
     :'Manual control restored',3);
@@ -852,7 +874,9 @@ function toggleRobot(){
 function toggleAuto(){
   if(!S||S.dead||S.done)return;
   if(save.gear.robot<1){say('Automation needs the robotic arm — see the Supply Depot',2.5);return;}
-  if(!S.robot)S.robot=true;
+  if(!S.robot){S.robot=true;
+    if(S.demand&&S.demand.id==='noRobot'&&!S.violated){S.violated=true;
+      say('The patient FORBADE robotics. The family saw everything.',3.5);}}
   S.auto=!S.auto;clickS();
   if(!S.auto&&S.autoHeld){S.autoHeld=false;mouse.down=false;onUp();}
   say(S.auto?'AUTOMATION ON — prep, cautery, injections, suction, closure & emergencies are handled'
@@ -899,7 +923,9 @@ function toggleAres(){
   if(!n){say('ARES-IV not installed — see the Supply Depot',2.5);return;}
   S.ares=!S.ares;clickS();
   if(S.ares){S.robot=false;S.auto=false;JOY=null;
-    say('ARES-IV ONLINE — '+n+'/4 arms working in parallel. Your hands stay free.',3);}
+    if(S.demand&&S.demand.id==='noRobot'&&!S.violated){S.violated=true;
+      say('The patient FORBADE robotics — ARES engaged anyway. That will cost you.',3.5);}
+    else say('ARES-IV ONLINE — '+n+'/4 arms working in parallel. Your hands stay free.',3);}
   else say('ARES-IV standby. Your hands, doctor.',2.5);
 }
 /* each arm has its own effector and works the field directly — the mouse stays yours */
@@ -1306,7 +1332,7 @@ function buildSteps(L){
   if(!L.noCut)s.push({t:L.closure==='staple'?'staple':'suture'});
   return s;
 }
-function startSurgery(idx,mod,bonusT){
+function startSurgery(idx,mod,bonusT,demand){
   const L=LEVELS[idx],F=fx(),D=DIFFS[save.diffMode||'normal'];
   const events=Math.max(0,(L.events||0)+((mod&&mod.events)||0)+D.evt);
   const evts=[];
@@ -1326,6 +1352,7 @@ function startSurgery(idx,mod,bonusT){
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
      ares:false,qHold:false,qActing:null,qchains:{},
+     demand:demand||null,violated:false,demWarned:false,robotT:0,minBlood:100,tTot,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a'],
             ['#4a2e30','#341c1e'],['#503a24','#382818'],['#24504e','#173736'],
@@ -1564,6 +1591,9 @@ function update(dt){
   }
   if(S.ares)updateQuad(dt);else updateAuto(dt);
   S.breathAmp+=(((S.dead||S.defib)?0:1)-S.breathAmp)*Math.min(1,dt*2.5);
+  /* patient-demand bookkeeping */
+  if(S.robot||S.ares)S.robotT+=dt;
+  if(S.blood<S.minBlood)S.minBlood=S.blood;
   if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
   if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
   if(!DEVOPT.freeze)S.tLeft-=dt;
@@ -1843,15 +1873,37 @@ function finish(success,fromDone){
   const stepsFrac=clamp(S.si/S.steps.length,0,1);
   let pay=0,stars=0,score=0;
   const acc=S.accs.length?S.accs.reduce((a,b)=>a+b,0)/S.accs.length:0;
-  const dMul=(S.D&&S.D.pay)||1;
+  const dMul=(S.D&&S.D.pay)||1,rMul=repMul();
   if(success){
     const timeB=clamp(S.tLeft/(L.time*.5),0,1);
     score=acc*.55+S.blood/100*.3+timeB*.15;
-    pay=L.pay*payMul*dMul*(0.4+0.6*score)+S.handled*120;
+    pay=L.pay*payMul*dMul*rMul*(0.4+0.6*score)+S.handled*120;
     stars=score>.85?3:score>.62?2:1;
   }else{
-    pay=L.pay*payMul*dMul*.12*stepsFrac;
+    pay=L.pay*payMul*dMul*rMul*.12*stepsFrac;
   }
+  /* patient demand settlement */
+  let demLine='',demHonored=null;
+  if(S.demand){
+    const d=S.demand;
+    let viol=S.violated;
+    if(d.id==='proRobot'&&S.robotT<S.t*.4)viol=true;
+    if(d.id==='clean'&&acc<.85)viol=true;
+    if(d.id==='swift'&&S.tLeft<S.tTot*.2)viol=true;
+    if(d.id==='blood'&&S.minBlood<70)viol=true;
+    demHonored=!viol;
+    if(success){
+      if(viol){pay*=.6;
+        demLine=`<dt>Patient demand</dt><dd class="crit">${d.tag} — IGNORED. Formal complaint filed; 40% of the fee withheld.</dd>`;}
+      else demLine=`<dt>Patient demand</dt><dd>${d.tag} — honoured. The patient sings your praises.</dd>`;
+    }
+  }
+  /* reputation */
+  const isDeath=!success&&['exsanguination','asystole','dev'].includes(S.failReason);
+  let repD=success?(stars===3?2:1):(isDeath?-8:-3);
+  if(S.demand&&success)repD+=demHonored?3:-8;
+  const oldRep=save.rep;
+  save.rep=clamp(Math.round(save.rep+repD),0,100);
   save.money+=Math.round(pay);
   if(success&&!S.er)save.best[S.idx]=Math.max(save.best[S.idx]||0,stars);
   persist();
@@ -1870,6 +1922,8 @@ function finish(success,fromDone){
     `<dt>Blood retained</dt><dd>${Math.round(S.blood)}%</dd>`+
     `<dt>Complications</dt><dd>${S.handled} handled${S.missed?`, <span class="crit">${S.missed} missed</span>`:''}</dd>`+
     `<dt>Time left</dt><dd>${Math.max(0,Math.round(S.tLeft))}s</dd>`+
+    demLine+
+    `<dt>Reputation</dt><dd class="${repD<0?'crit':''}">${repTitle(save.rep)} — ${save.rep}/100 (${repD>=0?'+':''}${repD})</dd>`+
     `<dt>Payout</dt><dd class="warn">${fmt$(pay)}</dd>`+
     `<dt>Balance</dt><dd class="warn">${fmt$(save.money)}</dd>`;
   const btns=$('res-btns');btns.innerHTML='';
@@ -2479,11 +2533,13 @@ function drawHUD(){
   ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
   ctx.textAlign='left';ctx.fillStyle='#cfe3d8';ctx.font='700 16px '+mono;
   ctx.fillText('OP-'+String(S.idx+1).padStart(2,'0')+' · '+S.L.name.toUpperCase(),24,34);
-  const siteTxt=S.L.site+(S.D.label!=='NORMAL'?' · '+S.D.label:'');
+  let siteTxt=S.L.site+(S.D.label!=='NORMAL'?' · '+S.D.label:'');
+  if(S.mod&&S.mod.id)siteTxt+='  ⚑ '+S.mod.id.toUpperCase();
   ctx.fillStyle=S.D.label==='HARDCORE'?'#ff5f6b':'#7fa192';ctx.font='10px '+mono;
   ctx.fillText(siteTxt,24,50);
-  if(S.mod&&S.mod.id){ctx.fillStyle='#ff5f6b';
-    ctx.fillText('   ⚑ '+S.mod.id.toUpperCase(),24+ctx.measureText(siteTxt).width,50);}
+  if(S.demand){ctx.fillStyle=S.violated?'#ff5f6b':'#f4b942';
+    ctx.fillText('  ⚖ '+S.demand.tag+(S.violated?' — VIOLATED':''),
+      24+ctx.measureText(siteTxt).width,50);}
   /* timer */
   const low=S.tLeft<25;
   ctx.textAlign='center';
@@ -3162,8 +3218,8 @@ const IN_OBST=[             /* carts, desks, beds, plants */
  [980,470,150,60,'bed'],[320,120,44,44,'plant'],[1180,600,44,44,'plant'],
  [520,330,44,44,'plant'],[904,150,150,60,'bed']];
 const IN_DOOR={x:1150,y:120};
-function startIntake(idx,mod){
-  IN={idx,mod,t:0,x:110,y:620,vx:0,vy:0,ang:-Math.PI/2,bumps:0,collT:0,
+function startIntake(idx,mod,demand){
+  IN={idx,mod,demand:demand||null,t:0,x:110,y:620,vx:0,vy:0,ang:-Math.PI/2,bumps:0,collT:0,
     phase:'move',m:0,oops:0,
     walkers:[
       {x:700,y:300,axis:'y',min:130,max:640,spd:70,ph:0},
@@ -3184,9 +3240,9 @@ function updateIntake(dt){
       /* overshot — the meter dumps and you refill */}
     if(!held&&n.m>=80&&n.m<=95){
       const bonus=Math.max(0,Math.round(16-n.t*.32-n.bumps*2-n.oops*2));
-      const idx=n.idx,mod=n.mod;stopIntake();
+      const idx=n.idx,mod=n.mod,dem=n.demand;stopIntake();
       blip(880,.25,.08,'sine');
-      startSurgery(idx,mod,bonus);
+      startSurgery(idx,mod,bonus,dem);
       return;}
     if(!held&&n.m>0&&n.m<80)n.m=Math.max(0,n.m-10*dt);
     return;
