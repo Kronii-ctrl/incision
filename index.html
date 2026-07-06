@@ -17,6 +17,19 @@
   .field-row{display:flex;flex-direction:column;gap:10px;width:280px}
   .err{color:#ff5f6b;font-size:12px;letter-spacing:.1em;min-height:16px}
   .prof-btn{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  #dev-chip{display:none;position:fixed;right:14px;bottom:14px;z-index:210;
+    font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:#f4b942;
+    background:#141008;border:1px solid #8a6a24;padding:7px 12px;cursor:pointer;user-select:none}
+  #dev-panel{display:none;position:fixed;right:14px;bottom:52px;z-index:210;width:230px;
+    background:#0b1210;border:1px solid var(--phos-dim);padding:12px;
+    font-family:var(--mono);box-shadow:0 0 24px rgba(70,232,150,.15)}
+  #dev-panel h4{margin:0 0 8px;color:var(--phos);font-size:11px;letter-spacing:.3em;font-weight:400}
+  #dev-panel button{display:block;width:100%;margin:4px 0;padding:7px 9px;text-align:left;
+    font-family:var(--mono);font-size:11px;letter-spacing:.06em;cursor:pointer;
+    background:transparent;color:var(--ink);border:1px solid var(--line)}
+  #dev-panel button:hover{border-color:var(--phos-dim);color:var(--phos)}
+  #dev-panel button.on{color:#f4b942;border-color:#8a6a24}
+  #dev-panel .dv-sec{color:var(--ink-dim);font-size:9px;letter-spacing:.2em;margin:8px 0 2px}
   #rotate{display:none;position:fixed;inset:0;z-index:99;background:var(--bg);
     align-items:center;justify-content:center;text-align:center;padding:40px;
     font-size:15px;letter-spacing:.12em;line-height:2;color:var(--phos)}
@@ -94,6 +107,26 @@
 </style>
 
 <div id="rotate">ROTATE YOUR DEVICE<br>the theatre plays in landscape</div>
+<div id="dev-chip">DEV ▤</div>
+<div id="dev-panel">
+  <h4>DEV CONSOLE</h4>
+  <div class="dv-sec">CAREER</div>
+  <button id="dv-money">+ $10,000</button>
+  <button id="dv-unlock">Unlock all operations</button>
+  <button id="dv-gear">Max gear + all finishes</button>
+  <div class="dv-sec">THEATRE (during surgery)</div>
+  <button id="dv-god">God mode: OFF</button>
+  <button id="dv-freeze">Freeze timer: OFF</button>
+  <button id="dv-time">+60 seconds</button>
+  <button id="dv-step">Complete current step</button>
+  <div class="dv-sec">TRIGGER COMPLICATION</div>
+  <button id="dv-bleed">Haemorrhage</button>
+  <button id="dv-bp">BP crash</button>
+  <button id="dv-arrest">Cardiac arrest</button>
+  <div class="dv-sec">OUTCOME</div>
+  <button id="dv-win">Instant success</button>
+  <button id="dv-kill">Flatline patient</button>
+</div>
 
 <section id="scr-login" class="scr on" aria-label="Surgeon login">
   <div style="height:6vh"></div>
@@ -422,7 +455,7 @@ function show(name){screens.forEach(s=>$('scr-'+s).classList.toggle('on',s===nam
 document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>{clickS();show(b.dataset.nav);}));
 $('b-operate').onclick=()=>{clickS();show('levels');};
 $('b-shop').onclick=()=>{clickS();show('shop');};
-$('b-switch').onclick=()=>{clickS();currentProfile=null;show('login');};
+$('b-switch').onclick=()=>{clickS();currentProfile=null;setDev(false);show('login');};
 $('b-wipe').onclick=()=>{if(confirm('Erase career progress for '+currentProfile+'?')){save=defaultSave();normalizeSave();persist();show('menu');}};
 
 /* ---- login screen ---- */
@@ -444,14 +477,17 @@ function renderLogin(){
       $('pw-err').textContent='';$('pw-in').value='';$('pw-in').focus();};
     list.appendChild(b);});
 }
-function loginAs(name){
+function loginAs(name,pw){
   currentProfile=name;profiles.last=name;saveProfiles();
-  loadSaveFor(name);show('menu');
+  loadSaveFor(name);
+  setDev(name==='KRONII'&&pw==='1');
+  show('menu');
 }
 $('b-login').onclick=async()=>{
   if(!pendingProfile)return;
-  const h=await hashPw(pendingProfile.name,$('pw-in').value);
-  if(h===pendingProfile.hash){clickS();loginAs(pendingProfile.name);}
+  const pw=$('pw-in').value;
+  const h=await hashPw(pendingProfile.name,pw);
+  if(h===pendingProfile.hash){clickS();loginAs(pendingProfile.name,pw);}
   else{$('pw-err').textContent='Wrong password. The board is watching.';$('pw-in').value='';}
 };
 $('pw-in').addEventListener('keydown',e=>{if(e.key==='Enter')$('b-login').click();});
@@ -464,8 +500,57 @@ $('b-create').onclick=async()=>{
   if(pw)pr.hash=await hashPw(name,pw);
   profiles.list.push(pr);saveProfiles();
   $('np-name').value='';$('np-pass').value='';
-  cashS();loginAs(name);
+  cashS();loginAs(name,pw);
 };
+
+/* ---- dev console (login: kronii / 1) ---- */
+let dev=false;
+const DEVOPT={god:false,freeze:false};
+function setDev(on){
+  dev=on;
+  $('dev-chip').style.display=on?'block':'none';
+  if(!on){$('dev-panel').style.display='none';DEVOPT.god=DEVOPT.freeze=false;devBtns();}
+}
+function toggleDevPanel(){const p=$('dev-panel');
+  p.style.display=p.style.display==='block'?'none':'block';}
+function devBtns(){
+  $('dv-god').textContent='God mode: '+(DEVOPT.god?'ON':'OFF');
+  $('dv-god').classList.toggle('on',DEVOPT.god);
+  $('dv-freeze').textContent='Freeze timer: '+(DEVOPT.freeze?'ON':'OFF');
+  $('dv-freeze').classList.toggle('on',DEVOPT.freeze);
+}
+$('dev-chip').onclick=toggleDevPanel;
+addEventListener('keydown',e=>{if(dev&&e.key==='`')toggleDevPanel();});
+const devRefresh=()=>{
+  if($('scr-menu').classList.contains('on'))$('menu-money').textContent='CREDIT BALANCE '+fmt$(save.money);
+  if($('scr-levels').classList.contains('on'))renderLevels();
+  if($('scr-shop').classList.contains('on'))renderShop();
+};
+$('dv-money').onclick=()=>{save.money+=10000;persist();cashS();devRefresh();};
+$('dv-unlock').onclick=()=>{LEVELS.forEach((_,i)=>save.unlocked[i]=true);persist();cashS();devRefresh();};
+$('dv-gear').onclick=()=>{
+  Object.keys(GEAR).forEach(k=>save.gear[k]=GEAR[k].tiers.length-1);
+  Object.keys(RSKINS).forEach(k=>save.skins.owned[k]=true);
+  persist();cashS();devRefresh();};
+$('dv-god').onclick=()=>{DEVOPT.god=!DEVOPT.god;devBtns();};
+$('dv-freeze').onclick=()=>{DEVOPT.freeze=!DEVOPT.freeze;devBtns();};
+$('dv-time').onclick=()=>{if(S)S.tLeft+=60;};
+$('dv-step').onclick=()=>{
+  if(!S||!S.step)return;S.accs.push(1);
+  if(S.step.t==='suture'||S.step.t==='staple'){S.step=null;S.done=true;S.doneT=0;}
+  else nextStep();};
+$('dv-bleed').onclick=()=>{if(S&&!S.alert&&!S.defib&&!S.dead)fireEvent({type:'bleeder'});};
+$('dv-bp').onclick=()=>{if(S&&!S.alert&&!S.defib&&!S.dead)fireEvent({type:'bp'});};
+$('dv-arrest').onclick=()=>{if(S&&!S.alert&&!S.defib&&!S.dead)fireEvent({type:'arrest'});};
+$('dv-win').onclick=()=>{if(S)finish(true);};
+$('dv-kill').onclick=()=>{if(S&&!S.dead)killPatient('dev');};
+/* seed the dev account */
+(async()=>{try{
+  if(!profiles.list.some(p=>p.name==='KRONII')){
+    profiles.list.push({name:'KRONII',hash:await hashPw('KRONII','1')});
+    saveProfiles();
+    if($('scr-login').classList.contains('on'))renderLogin();}
+}catch(e){}})();
 
 function renderLevels(){
   $('lv-money').textContent=fmt$(save.money);
@@ -1080,7 +1165,7 @@ function update(dt){
   S.breathAmp+=(((S.dead||S.defib)?0:1)-S.breathAmp)*Math.min(1,dt*2.5);
   if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
   if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
-  S.tLeft-=dt;
+  if(!DEVOPT.freeze)S.tLeft-=dt;
   if(S.tLeft<=0){S.failReason='time';finish(false);return;}
   /* heartbeat */
   if(S.bpm>0){S.beatPh+=dt*S.bpm/60;
@@ -1097,6 +1182,7 @@ function update(dt){
     if(Math.random()<.12)spurt(b.x,b.y,1);}});
   S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
   if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
+  if(DEVOPT.god)S.blood=100;
   if(S.blood<=0){S.blood=0;killPatient('exsanguination');return;}
   if(S.blood<35&&S.bpm>0)S.bpm=Math.min(150,S.bpm+dt*6);
   /* events */
