@@ -170,7 +170,8 @@
     extract gently with <b>forceps</b> · <b>drill</b> and <b>saw</b> bone · hold the <b>laser</b>
     dead-steady · <b>suction</b> the pooling blood · close with <b>suture</b> or <b>stapler</b> ·
     complications strike without warning · buy time mid-operation · own a <b>robotic arm</b>?
-    toggle it with <b>R</b> or the top-bar button — drive it with the mouse, WASD, or the touch pad ·
+    toggle it with <b>R</b> — drive it with the mouse, WASD, or the touch pad · save $50k for the
+    <b>ARES-IV quad system</b> (<b>G</b>): four arms that run the entire operation flawlessly ·
     <b>M</b> toggles sound
   </p>
 </section>
@@ -250,6 +251,9 @@ function normalizeSave(){
   save.diffMode=save.diffMode||'normal';
   save.skins=Object.assign({owned:{},equipped:'steel'},save.skins);
   save.skins.owned.steel=true;
+  save.quad=save.quad||{arms:{},tier:0};
+  save.quad.arms=save.quad.arms||{};
+  save.quad.tier=save.quad.tier||0;
 }
 function loadSaveFor(name){
   save=defaultSave();
@@ -573,6 +577,8 @@ $('dv-unlock').onclick=()=>{LEVELS.forEach((_,i)=>save.unlocked[i]=true);persist
 $('dv-gear').onclick=()=>{
   Object.keys(GEAR).forEach(k=>save.gear[k]=GEAR[k].tiers.length-1);
   Object.keys(RSKINS).forEach(k=>save.skins.owned[k]=true);
+  ['prep','hemo','resect','micro'].forEach(k=>save.quad.arms[k]=true);
+  save.quad.tier=5;
   persist();cashS();devRefresh();};
 $('dv-god').onclick=()=>{DEVOPT.god=!DEVOPT.god;devBtns();};
 $('dv-freeze').onclick=()=>{DEVOPT.freeze=!DEVOPT.freeze;devBtns();};
@@ -675,6 +681,39 @@ function renderShop(){
         save.skins.equipped=k;persist();cashS();renderShop();};}
     card.appendChild(b);g.appendChild(card);
   });
+  /* ARES-IV quad robotics */
+  const qh=document.createElement('div');qh.className='ward-head';
+  qh.textContent='ARES-IV Quad Robotics — the theatre that operates itself';
+  g.appendChild(qh);
+  const ARMS={
+   prep:['Arm I — Prep','Antiseptic (incision line first), irrigation, anaesthetic injections.'],
+   hemo:['Arm II — Hemostasis','Clamps bleeders on sight, cauterizes, suctions, answers BP crashes — and times the defibrillator perfectly.'],
+   resect:['Arm III — Resection','Locates with ultrasound, incises flawlessly on the line, drills, saws, lasers.'],
+   micro:['Arm IV — Microsurgery','Retracts, extracts and implants without a single tear, sutures and staples.']};
+  Object.entries(ARMS).forEach(([k,[nm,ds]])=>{
+    const owned=save.quad.arms[k];
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML=`<div class="tier">ARES-IV Module${owned?' — installed':''}</div>`+
+      `<h3>${nm}</h3><div class="desc">${ds}</div>`;
+    const b=document.createElement('button');
+    if(owned){b.className='btn';b.textContent='Installed ✓';b.disabled=true;}
+    else{b.className='btn amber';b.textContent='Install — '+fmt$(12500);
+      b.disabled=save.money<12500;
+      b.onclick=()=>{save.money-=12500;save.quad.arms[k]=true;persist();cashS();renderShop();};}
+    card.appendChild(b);g.appendChild(card);
+  });
+  const QP=[3000,5000,7000,9000,12000];
+  const qt=save.quad.tier;
+  const qc=document.createElement('div');qc.className='card';
+  qc.innerHTML=`<div class="tier">ARES-IV — Servo Calibration ${qt}/5</div>`+
+    `<h3>System Speed</h3><div class="desc">Each calibration pass makes every ARES arm 18% faster. Precision is absolute at every tier.</div>`+
+    (qt>=5?`<div class="desc" style="color:var(--phos)">Fully calibrated.</div>`
+      :`<div class="desc">NEXT: Calibration ${qt+1} — <span class="price">${fmt$(QP[qt])}</span></div>`);
+  if(qt<5){const b=document.createElement('button');b.className='btn amber';
+    b.textContent='Calibrate';b.disabled=save.money<QP[qt];
+    b.onclick=()=>{save.money-=QP[qt];save.quad.tier++;persist();cashS();renderShop();};
+    qc.appendChild(b);}
+  g.appendChild(qc);
 }
 
 /* ============================== BRIEFING ============================== */
@@ -773,6 +812,7 @@ addEventListener('keydown',e=>{
     else if(S&&S.robot&&!mouse.down){mouse.down=true;ac();onDown(mouse.x,mouse.y);}}
   if(e.key==='r'||e.key==='R')toggleRobot();
   if(e.key==='f'||e.key==='F')toggleAuto();
+  if(e.key==='g'||e.key==='G')toggleAres();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
   if(e.key==='Escape'){if(S)abortSurgery();else if(DR){stopDrive();show('menu');}}
 });
@@ -785,6 +825,7 @@ function toggleRobot(){
   if(save.gear.robot<1){say('No robotic arm installed — see the Supply Depot',2.5);return;}
   S.robot=!S.robot;JOY=null;mouse.down=false;onUp();clickS();
   if(!S.robot)S.auto=false;
+  if(S.robot)S.ares=false;
   say(S.robot?(TOUCH?'ROBOTIC ARM ENGAGED — drag to steer, or pad + ACT'
     :'ROBOTIC ARM ENGAGED — mouse steers it; WASD + SPACE also work')
     :'Manual control restored',3);
@@ -823,6 +864,135 @@ function nearestSwabCell(st){
     if(st.crit&&st.crit.has(key)){if(d<bcd){bcd=d;bestCrit={x:cx,y:cy};}}
     if(d<bd){bd=d;best={x:cx,y:cy};}}
   return bestCrit||best;
+}
+/* ---- ARES-IV quad system: every step, no hands ---- */
+const QCAP={
+ prep:['swab','irrigate','inject'],
+ hemo:['suction','cauterize'],
+ resect:['scan','incise','drill','saw','laser'],
+ micro:['retract','extract','place','stones','suture','staple'],
+};
+const qArmFor=t=>{for(const k in QCAP)if(QCAP[k].includes(t))return k;return null;};
+const qOwned=()=>Object.values(save.quad.arms).filter(Boolean).length;
+function toggleAres(){
+  if(!S||S.dead||S.done)return;
+  const n=qOwned();
+  if(!n){say('ARES-IV not installed — see the Supply Depot',2.5);return;}
+  S.ares=!S.ares;clickS();
+  if(S.ares){S.robot=false;S.auto=false;JOY=null;
+    say('ARES-IV ONLINE — '+n+'/4 arms. The theatre works for you.',3);}
+  else{say('ARES-IV standby. Your hands, doctor.',2.5);
+    if(S.qHold){S.qHold=false;mouse.down=false;onUp();}}
+}
+function updateQuad(dt){
+  let wantHold=false,acting=null;
+  const A=save.quad.arms,st=S.step;
+  const qs=300*(1+.18*(save.quad.tier||0));
+  const move=(tx,ty,mul)=>autoMove(tx,ty,qs*(mul||1),dt);
+  if(!S.dead&&!S.done){
+    if(S.defib){
+      if(A.hemo){acting='hemo';
+        const dd=S.defib,pos=50+50*Math.sin(dd.t*dd.speed),z=(dd.zone||.26)*100;
+        if(Math.abs(pos-75)<z/2-3)tryShock();}
+    }else{
+      const b=S.bleeders.find(x=>!x.clamped);
+      if(b&&A.hemo){acting='hemo';autoTool('clamp');
+        move(b.x,b.y,1.25);
+        if(dist(mouse.x,mouse.y,b.x,b.y)<S.F.clampR){
+          b.clamped=true;clickS();spurt(b.x,b.y,6);S.clampT=.3;
+          if(S.alert&&S.alert.type==='bleeder'&&S.bleeders.every(q=>q.clamped))resolveAlert(true);}}
+      else if(S.alert&&S.alert.type==='bp'&&A.hemo){acting='hemo';autoTool('syringe');
+        const p=pathPt(.5);move(p.x,p.y,1.25);
+        if(dist(mouse.x,mouse.y,p.x,p.y)<16){
+          resolveAlert(true);S.injT=.35;blip(600,.2,.08,'sine');
+          say('Stabilizer in — ARES.',2);}}
+      else if(st){
+        const arm=qArmFor(st.t);
+        if(arm&&A[arm]){acting=arm;
+          switch(st.t){
+            case 'swab':{autoTool('swab');
+              if(!S.autoTgt||dist(mouse.x,mouse.y,S.autoTgt.x,S.autoTgt.y)<10)S.autoTgt=nearestSwabCell(st);
+              if(S.autoTgt){move(S.autoTgt.x,S.autoTgt.y);wantHold=true;}break;}
+            case 'irrigate':{autoTool('swab');
+              const p=pathPt(.5+.38*Math.sin(S.t*1.4));
+              move(p.x,p.y);wantHold=true;break;}
+            case 'inject':{autoTool('syringe');
+              const sn=nearestUndone(st.sites);
+              if(sn){move(sn.x,sn.y);
+                if(dist(mouse.x,mouse.y,sn.x,sn.y)<7){sn.done=true;S.injT=.35;blip(600,.12,.07,'sine');}}
+              break;}
+            case 'suction':{autoTool('suction');
+              const pl=nearestUndone(st.pools);
+              if(pl){move(pl.x,pl.y);
+                if(dist(mouse.x,mouse.y,pl.x,pl.y)<12)wantHold=true;}
+              break;}
+            case 'cauterize':{autoTool('cautery');
+              const spn=nearestUndone(st.spots);
+              if(spn){move(spn.x,spn.y);
+                if(dist(mouse.x,mouse.y,spn.x,spn.y)<10)wantHold=true;}
+              break;}
+            case 'scan':{autoTool('probe');
+              move(st.tx,st.ty);break;}
+            case 'incise':{autoTool('scalpel');
+              const p=pathPt(Math.min(1,st.cp+.018));
+              move(p.x,p.y,1.1);
+              if(dist(mouse.x,mouse.y,p.x,p.y)<10){st.cutting=true;wantHold=true;}
+              break;}
+            case 'drill':{autoTool('drill');
+              const spn=nearestUndone(st.spots);
+              if(spn){move(spn.x,spn.y);
+                if(dist(mouse.x,mouse.y,spn.x,spn.y)<10)wantHold=true;}
+              break;}
+            case 'saw':{autoTool('saw');
+              const u=.5+.5*Math.sin(S.t*7);
+              move(st.ax+(st.bx-st.ax)*u,st.ay+(st.by-st.ay)*u,1.4);
+              wantHold=true;break;}
+            case 'laser':{autoTool('laser');
+              const spn=nearestUndone(st.spots);
+              if(spn){move(spn.x,spn.y);
+                if(dist(mouse.x,mouse.y,spn.x,spn.y)<6)wantHold=true;}
+              break;}
+            case 'retract':{autoTool('retractor');
+              const p=pathPt(.5);
+              if(!st.grabbed&&!st.done){move(p.x,p.y);
+                if(dist(mouse.x,mouse.y,p.x,p.y)<12){st.grabbed=true;st.sx=mouse.x;st.sy=mouse.y;}}
+              else if(st.grabbed){wantHold=true;
+                move(st.sx+p.nx*(S.F.retDrag+16),st.sy+p.ny*(S.F.retDrag+16),.7);}
+              break;}
+            case 'extract': case 'place':{autoTool('forceps');
+              const o=st.organ;
+              if(o.done)break;
+              if(!o.grabbed){move(o.x,o.y);
+                if(dist(mouse.x,mouse.y,o.x,o.y)<14)o.grabbed=true;}
+              else{wantHold=true;
+                const tgt=o.placing?pathPt(.5):DISH;
+                move(tgt.x,tgt.y,.55);}   /* slow carry — physically cannot tear */
+              break;}
+            case 'stones':{autoTool('forceps');
+              const s2=st.list.find(q=>!q.done&&q.grabbed)||nearestUndone(st.list);
+              if(s2){if(!s2.grabbed){move(s2.x,s2.y);
+                  if(dist(mouse.x,mouse.y,s2.x,s2.y)<12)s2.grabbed=true;}
+                else{wantHold=true;move(DISH.x,DISH.y,.55);}}
+              break;}
+            case 'suture':{autoTool('suture');
+              const pt=nearestUndone(st.pts);
+              if(pt){move(pt.x,pt.y);
+                if(dist(mouse.x,mouse.y,pt.x,pt.y)<8)wantHold=true;}
+              break;}
+            case 'staple':{autoTool('stapler');
+              const pt=nearestUndone(st.pts);
+              if(pt){move(pt.x,pt.y);
+                if(dist(mouse.x,mouse.y,pt.x,pt.y)<8&&S.stapleT<=0){
+                  pt.done=true;S.stapleT=.2;blip(210,.08,.1,'square');}}
+              break;}
+          }
+        }
+      }
+    }
+  }
+  if(wantHold&&!S.qHold){S.qHold=true;mouse.down=true;}
+  if(!wantHold&&S.qHold){S.qHold=false;mouse.down=false;onUp();}
+  S.qActing=acting;
 }
 function updateAuto(dt){
   let wantHold=false,acting=false;
@@ -1057,6 +1227,7 @@ function startSurgery(idx,mod){
      tearV:F.tearV*((mod&&mod.tear)||1)*D.tol,
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
+     ares:false,qHold:false,qActing:null,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
@@ -1155,6 +1326,7 @@ function onDown(x,y){
   /* robot + auto buttons (top bar) */
   if(save.gear.robot>0&&x>724&&x<834&&y>12&&y<50){toggleRobot();return;}
   if(save.gear.robot>0&&S.robot&&x>842&&x<922&&y>12&&y<50){toggleAuto();return;}
+  if(qOwned()>0&&x>930&&x<1010&&y>12&&y<50){toggleAres();return;}
   /* tool tray */
   if(y>652){const i=Math.floor((x-36)/86);if(i>=0&&i<14)selectTool(i);return;}
   const st=S.step,tool=TOOLS[S.tool].id;
@@ -1287,7 +1459,7 @@ function update(dt){
       mouse.y=clamp(mouse.y+vy/l*sp*dt,66,H-8);
     }else S.robHeld=0;
   }
-  updateAuto(dt);
+  if(S.ares)updateQuad(dt);else updateAuto(dt);
   S.breathAmp+=(((S.dead||S.defib)?0:1)-S.breathAmp)*Math.min(1,dt*2.5);
   if(S.dead){S.deadT+=dt;if(S.deadT>2.6)finish(false);return;}
   if(S.done){S.doneT+=dt;if(S.doneT>1.8)finish(true,true);return;}
@@ -1643,6 +1815,7 @@ function draw(){
   ctx.strokeStyle='#153029';ctx.lineWidth=5;roundRect(FX,FY,FW,FH,26);ctx.stroke();
   drawDish();
   drawParticles();
+  if(S.ares)drawQuadArms();
   drawScanFx();
   drawMonitor();
   drawHUD();
@@ -2145,6 +2318,16 @@ function drawHUD(){
       ctx.fillText(S.auto?'◉ AUTO':'○ AUTO',882,30);
       ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
       ctx.fillText('[F]',882,44);}}
+  /* ARES quad system toggle */
+  if(qOwned()>0){
+    ctx.textAlign='center';
+    ctx.strokeStyle=S.ares?'#46e896':'#2a4438';ctx.lineWidth=1.5;
+    ctx.strokeRect(930,12,80,38);
+    if(S.ares){ctx.fillStyle='rgba(70,232,150,.12)';ctx.fillRect(930,12,80,38);}
+    ctx.fillStyle=S.ares?'#46e896':'#7fa192';ctx.font='11px '+mono;
+    ctx.fillText(S.ares?'◉ ARES':'○ ARES',970,30);
+    ctx.fillStyle='#7fa192';ctx.font='9px '+mono;
+    ctx.fillText('[G] '+qOwned()+'/4',970,44);}
   /* money */
   ctx.textAlign='right';ctx.fillStyle='#f4b942';ctx.font='700 18px '+mono;
   ctx.fillText(fmt$(save.money),W-24,32);
@@ -2626,8 +2809,42 @@ function drawRobotArm(){
     ctx.moveTo(ex+x1,ey+y1);ctx.lineTo(ex+x2,ey+y2);});
   ctx.stroke();
 }
+const QMOUNTS={prep:[196,132],resect:[1084,132],hemo:[196,478],micro:[1084,478]};
+function drawQuadArms(){
+  const A=save.quad.arms,mono=getComputedStyle(document.body).fontFamily;
+  let i=0;
+  for(const[k,[mx2,my2]]of Object.entries(QMOUNTS)){
+    i++;
+    if(!A[k])continue;
+    const act=S.qActing===k;
+    let ex,ey;
+    if(act){ex=mouse.x;ey=Math.max(mouse.y,100);}
+    else{ex=mx2+(mx2<640?66:-66);ey=my2+38+Math.sin(S.t*1.3+i*1.7)*6;}
+    ctx.fillStyle='#1a262c';ctx.beginPath();ctx.roundRect(mx2-16,my2-12,32,24,5);ctx.fill();
+    ctx.strokeStyle='#0b1418';ctx.lineWidth=1.5;ctx.stroke();
+    const L1=210,L2=250;
+    const dx=ex-mx2,dy=ey-my2;
+    const dd=clamp(Math.hypot(dx,dy)||1,50,L1+L2-8);
+    const th=Math.atan2(dy,dx);
+    const al=Math.acos(clamp((L1*L1+dd*dd-L2*L2)/(2*L1*dd),-1,1));
+    const sgn=mx2<640?-1:1;
+    const elx=mx2+Math.cos(th+al*sgn)*L1,ely=my2+Math.sin(th+al*sgn)*L1;
+    taperSeg(mx2,my2,elx,ely,15,11);
+    taperSeg(elx,ely,ex,ey,10,6);
+    hub(mx2,my2,8);hub(elx,ely,6.5);hub(ex,ey,4);
+    ctx.textAlign='center';ctx.font='9px '+mono;
+    ctx.fillStyle=act?'#f4b942':'rgba(70,232,150,.7)';
+    ctx.fillText(k.toUpperCase(),mx2,my2-18);
+    if(act){ctx.save();ctx.translate(ex,ey);
+      drawToolHeld(TOOLS[S.tool].id,toolAnim());ctx.restore();}
+  }
+}
 function drawCursor(){
   if(S.robot)return drawRobotArm();
+  if(S.ares&&S.qActing){ /* the quad arm holds the tool; just mark the point */
+    ctx.strokeStyle='rgba(244,185,66,.6)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(mouse.x,mouse.y,14,0,7);ctx.stroke();
+    return;}
   if(mouse.y>652||mouse.y<60)return drawPointer();
   ctx.save();ctx.translate(mouse.x,mouse.y);ctx.scale(1.15,1.15);
   drawToolHeld(TOOLS[S.tool].id,toolAnim());
