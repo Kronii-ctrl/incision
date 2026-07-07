@@ -447,6 +447,17 @@ const T={
  aneur:{name:'Aneurysm Clipping',site:'scalp',interior:'bone',mid:[['drill',3],['saw'],['laser',2],['cauterize',2]],cond:'MCA aneurysm, unruptured'},
  bypass2:{name:'Bypass Revision',site:'chest',organ:'heart',closure:'staple',mid:[['retract'],['cauterize',3],['extract','graft'],['place','graft']],cond:'Occluded graft, redo sternotomy'},
  multi:{name:'Multi-Organ Transplant',site:'abdomen',fastBleed:1.3,mid:[['retract'],['extract','liver'],['place','liver'],['extract','kidney'],['place','kidney'],['suction',3]],cond:'Combined liver–kidney failure'},
+ /* dual-incision procedures: open, work, close — then a second field */
+ dLac:{name:'Bilateral Laceration Repair',site:'forearm',dual:true,mid:[],mid2:[],cond:'Defensive wounds, two sites'},
+ dShard:{name:'Multiple Foreign Bodies',site:'forearm',dual:true,pre:[['scan']],mid:[['extract','shard']],mid2:[['extract','shard']],cond:'Shrapnel spread, two loci'},
+ dStone:{name:'Staged Stone Clearance',site:'abdomen',dual:true,mid:[['stones',3]],mid2:[['stones',3]],cond:'Stones in duct and gallbladder'},
+ dFasc:{name:'Compartment Release',site:'calf',dual:true,fastBleed:1.2,mid:[['cauterize',2]],mid2:[['cauterize',2],['suction',2]],cond:'Compartment syndrome, dual release'},
+ dHernia:{name:'Bilateral Hernia Repair',site:'abdomen',dual:true,mid:[['retract'],['place','graftskin']],mid2:[['place','graftskin']],cond:'Bilateral inguinal herniae'},
+ dBurn:{name:'Staged Debridement',site:'thigh',dual:true,closure:'staple',mid:[['irrigate'],['cauterize',2],['place','graftskin']],mid2:[['irrigate'],['place','graftskin']],cond:'Deep burns, two fields'},
+ dBullet:{name:'Through-and-Through GSW',site:'abdomen',dual:true,fastBleed:1.5,pre:[['scan']],mid:[['extract','bullet'],['cauterize',2]],mid2:[['cauterize',2],['suction',2]],cond:'Entry and exit wounds'},
+ dChest:{name:'Thoracotomy + Drain',site:'chest',dual:true,fastBleed:1.3,mid:[['retract'],['suction',2],['cauterize',2]],mid2:[['suction',2]],cond:'Haemothorax, dual access'},
+ dKidney:{name:'Bilateral Renal Surgery',site:'back',dual:true,mid:[['extract','kidney'],['place','kidney']],mid2:[['cauterize',2],['suction',2]],cond:'Staged renal reconstruction'},
+ dHarvest:{name:'Graft Harvest & Bypass',site:'thigh',site2:'chest',dual:true,organ:'heart',mid:[['extract','graft']],mid2:[['retract'],['place','graft'],['cauterize',2]],cond:'Autograft CABG — harvest, then open the chest'},
 };
 const WARDS=[
  {name:'Ward I — Minor Surgery',ops:['lac','shard','lac','cystN','shard','absc','lac','cystN','absc','shard']},
@@ -459,6 +470,8 @@ const WARDS=[
  {name:'Ward VIII — Overnight Trauma',ops:['bullet','lapa','spleen','liver','reattach','burn','bowel','ribres','lapa','multi']},
  {name:'Ward IX — Transplant Programme',ops:['kidT','liverT','lungT','panc','bowel','kidT','liverT','lungT','multi','multi']},
  {name:'Ward X — Chief of Surgery',ops:['aneur','brainT','bypass2','valve','peri','esoph','spinal','cranio','bypass','multi']},
+ {name:'Ward XI — Twin-Field Surgery',ops:['dLac','dShard','dStone','dFasc','dHernia','dBurn','dShard','dFasc','dStone','dHernia']},
+ {name:'Ward XII — Polytrauma Theatre',ops:['dBullet','dChest','dKidney','dHarvest','dBullet','dChest','dKidney','dHarvest','dBullet','dHarvest']},
 ];
 const FIRST=['Rosa','Marcus','Dana','Elif','Johan','Priya','Tomas','Aiko','Lena','Omar','Nadia','Piotr','Sofia','Kwame','Ingrid','Mateo','Yara','Dmitri','Chloe','Ravi'];
 const LAST=['Alvarez','Okafor','Virtanen','Castellanos','Lindqvist','Beaumont','Ishikawa','N\'Diaye','Petrov','Marchetti','Haugen','Silva','Novak','Tanaka','Osei','Weber','Kaur','Moreau','Santos','Berg','Ferrell','Yamada','Kovac','Diallo'];
@@ -473,7 +486,7 @@ WARDS.forEach((w,wi)=>{w.ops.forEach((k,oi)=>{
     name:t.name, ward:wi, site:st.label,
     patient:[FIRST[(i*11)%20][0]+'. '+LAST[(i*7)%24], 18+((i*13)%59), t.cond],
     diff:Math.min(5,wi+1),
-    time:Math.round(135+(t.mid.length+(t.pre?t.pre.length:0))*28+(2+Math.floor(i/8))*6+(4+Math.floor(i/7))*4+wi*12-i*0.9),
+    time:Math.round(135+(t.mid.length+(t.pre?t.pre.length:0)+(t.mid2?t.mid2.length:0))*28+(t.dual?60:0)+(2+Math.floor(i/8))*6+(4+Math.floor(i/7))*4+Math.min(wi,9)*12-Math.min(i,99)*0.9),
     pay:Math.round((300+i*115)/10)*10,
     preCut:t.preCut, noCut:t.noCut, closure:t.closure||'suture',
     bleeders:Math.min(t.maxBl!==undefined?t.maxBl:8,2+Math.floor(i/8)),
@@ -481,8 +494,21 @@ WARDS.forEach((w,wi)=>{w.ops.forEach((k,oi)=>{
     mid:t.mid, pre:t.pre||[], events:Math.min(4,Math.floor((i+3)/10)),
     organ:t.organ||null, fastBleed:t.fastBleed, interior:t.interior||'tissue',
     tone:(i*3)%5,
+    dual:!!t.dual, mid2:t.mid2||[],
+    site2:t.site2?SITES[t.site2].label:null,
     pathSpec:{x0:cx-Math.cos(ang)*len/2, y0:cy-Math.sin(ang)*len/2,
               x1:cx+Math.cos(ang)*len/2, y1:cy+Math.sin(ang)*len/2, bend},
+    pathSpec2:(()=>{
+      if(!t.dual)return null;
+      const s2=t.site2?SITES[t.site2]:st;
+      const ang2=(s2.ang+((i*29)%25)-12)*Math.PI/180+(t.site2?0:Math.PI/2*((i%2)?1:-1));
+      const len2=Math.min(s2.len*.8,220);
+      const cx2=clamp(cx+((i%2)?-120:120),380,905);
+      const cy2=clamp(cy+(((i*7)%2)?80:-80),275,445);
+      return{x0:cx2-Math.cos(ang2)*len2/2,y0:cy2-Math.sin(ang2)*len2/2,
+             x1:cx2+Math.cos(ang2)*len2/2,y1:cy2+Math.sin(ang2)*len2/2,
+             bend:s2.bend*((i%2)?-1:1)*.8};
+    })(),
   });
 });});
 /* patient demands — ignore them and the fee suffers, and so does your name */
@@ -1327,6 +1353,7 @@ function selectTool(i){if(S&&!S.done){S.tool=i;clickS();}}
 /* ============================== SURGERY STATE ============================== */
 let S=null,rafId=0,lastT=0;
 function buildSteps(L){
+  const close=L.closure==='staple'?'staple':'suture';
   const s=[{t:'swab'}];
   (L.pre||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
   if(!L.noCut){
@@ -1334,7 +1361,14 @@ function buildSteps(L){
     s.push({t:'clamp'});
   }
   (L.mid||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
-  if(!L.noCut)s.push({t:L.closure==='staple'?'staple':'suture'});
+  if(!L.noCut)s.push({t:close});
+  if(L.dual){ /* second field: transition, incise, clamp, work, close */
+    s.push({t:'newIncision'});
+    s.push({t:'incise'});
+    s.push({t:'clamp'});
+    (L.mid2||[]).forEach(m=>s.push({t:m[0],arg:m[1]}));
+    s.push({t:close});
+  }
   return s;
 }
 function startSurgery(idx,mod,bonusT,demand){
@@ -1362,11 +1396,13 @@ function startSurgery(idx,mod,bonusT,demand){
      ares:false,qHold:false,qActing:null,qchains:{},
      demand:demand||null,violated:false,demWarned:false,robotT:0,minBlood:100,tTot,
      pend:[],seizeT:0,tension:null,stormRe:false,
+     curInc:null,curClose:null,curRet:null,scars:[],siteNow:L.site,
      drape:[['#28584d','#1b4038'],['#4a4d2e','#33361c'],['#2e5844','#1c4030'],
             ['#2e4a58','#1c3440'],['#26365e','#182444'],['#3c3054','#281f3a'],
             ['#4a2e30','#341c1e'],['#503a24','#382818'],['#24504e','#173736'],
-            ['#2a2a2e','#1a1a1e']][L.ward||0]};
+            ['#2a2a2e','#1a1a1e'],['#2e4438','#1c2f24'],['#44283e','#2e182a']][L.ward||0]};
   PATHP=makePath(L.pathSpec);
+  S.guide2=(L.dual&&!L.site2&&L.pathSpec2)?makePath(L.pathSpec2):null;
   paintSkin(L.tone||1,L.site);
   stainCx.clearRect(0,0,W,H);swabCx.clearRect(0,0,W,H);
   nextStep();
@@ -1386,20 +1422,39 @@ function nextStep(){
   S.step=st;
   switch(st.t){
     case 'swab':{st.cells=new Set();st.need=100;
-      /* critical zone: the incision line itself must be prepped */
+      /* critical zone: every planned incision line must be prepped */
       st.crit=new Set();
-      for(let i=0;i<PATHP.length;i+=2){const p=PATHP[i];
+      const addCrit=P=>{for(let i=0;i<P.length;i+=2){const p=P[i];
         for(let o=-1;o<=1;o++)
-          st.crit.add(Math.floor((p.x+p.nx*o*30)/34)+','+Math.floor((p.y+p.ny*o*30)/34));}
-      say('Prep the field — and trace the incision line itself with antiseptic',4);break;}
+          st.crit.add(Math.floor((p.x+p.nx*o*30)/34)+','+Math.floor((p.y+p.ny*o*30)/34));}};
+      addCrit(PATHP);
+      if(L.dual&&!L.site2&&L.pathSpec2)addCrit(makePath(L.pathSpec2));
+      say(L.dual?'Prep the field — trace BOTH marked incision lines':'Prep the field — and trace the incision line itself with antiseptic',4);break;}
     case 'scan':{const p=pathPt(rand(.3,.7));
       st.tx=p.x+rand(-30,30);st.ty=p.y+rand(-20,20);st.prog=0;st.sig=0;
       say('Locate the object — sweep the ultrasound probe, follow the signal',4);break;}
     case 'retract':{st.prog=0;st.grabbed=false;st.done=false;
+      S.curRet=st;
       say('Exposure — hook the retractor on the wound and pull it wide',4);break;}
+    case 'newIncision':{
+      /* close the book on field one: snapshot the scar, move the line */
+      S.scars.push({pts:PATHP.map(p=>({x:p.x,y:p.y})),
+        stitches:(S.curClose&&S.curClose.pts)?S.curClose.pts.map(p=>({x:p.x,y:p.y})):[],
+        staple:!!(S.curClose&&S.curClose.t==='staple'),site:S.siteNow});
+      S.steps.slice(0,S.si).forEach(sx=>{   /* implants from the closed field are under skin now */
+        if(sx.t==='place'&&sx.organ)sx.organ.hidden=true;});
+      S.bleeders=[];S.curInc=null;S.curClose=null;S.curRet=null;S.guide2=null;
+      PATHP=makePath(L.pathSpec2);
+      if(L.site2){S.siteNow=L.site2;paintSkin(L.tone||1,L.site2);
+        swabCx.clearRect(0,0,W,H);stainCx.clearRect(0,0,W,H);
+        S.scars=S.scars.filter(sc=>sc.site===S.siteNow);
+        say('Field two: '+L.site2+' — the site is prepped, incise on the new line',4.5);}
+      else say('Site one closed. Second incision — new line marked',4);
+      nextStep();return;}
     case 'incise':{st.cp=0;st.cutting=false;st.dev=0;st.devN=0;st.strays=0;
+      S.curInc=st;
       say('Take the scalpel — follow the guide line, one steady draw',4);break;}
-    case 'clamp':{const n=L.bleeders;
+    case 'clamp':{const n=L.dual?Math.max(2,Math.ceil(L.bleeders*.6)):L.bleeders;
       for(let i=0;i<n;i++)spawnBleeder(rand(.12,.88));
       say('Bleeders! Clamp every one before the patient drains',4);break;}
     case 'cauterize':{st.spots=[];const n=st.arg;
@@ -1437,13 +1492,15 @@ function nextStep(){
       for(let i=0;i<n;i++){const p=pathPt(.2+.6*(n>1?i/(n-1):.5));
         st.pools.push({x:p.x+rand(-10,10),y:p.y+rand(-6,8),prog:0,done:false});}
       say('Suction — clear the pooled blood from the cavity',4);break;}
-    case 'suture':{st.pts=[];const n=L.stitches;
+    case 'suture':{st.pts=[];const n=L.dual?Math.max(3,Math.ceil(L.stitches*.6)):L.stitches;
       for(let i=0;i<n;i++){const p=pathPt(.08+.84*i/(n-1));
         st.pts.push({x:p.x,y:p.y,prog:0,done:false});}
+      S.curClose=st;
       say('Close — hold the suture on each marker',4);break;}
-    case 'staple':{st.pts=[];const n=L.stitches;
+    case 'staple':{st.pts=[];const n=L.dual?Math.max(3,Math.ceil(L.stitches*.6)):L.stitches;
       for(let i=0;i<n;i++){const p=pathPt(.08+.84*i/(n-1));
         st.pts.push({x:p.x,y:p.y,prog:0,done:false});}
+      S.curClose=st;
       say('Close — one firm staple on each marker',4);break;}
   }
 }
@@ -1862,7 +1919,8 @@ function updateStep(dt){
       break;}
     case 'staple':{
       if(st.pts.every(p=>p.done)){S.accs.push(1);
-        S.step=null;S.done=true;S.doneT=0;say('Stapled shut. Patient is stable.',3);}
+        if(S.si<S.steps.length-1)nextStep();
+        else{S.step=null;S.done=true;S.doneT=0;say('Stapled shut. Patient is stable.',3);}}
       break;}
     case 'suture':{
       if(mouse.down&&tool==='suture'){
@@ -1872,7 +1930,8 @@ function updateStep(dt){
             if(p.prog>=1){p.done=true;clickS();}
             break;}}}
       if(st.pts.every(p=>p.done)){S.accs.push(1);
-        S.step=null;S.done=true;S.doneT=0;say('Closed. Patient is stable.',3);}
+        if(S.si<S.steps.length-1)nextStep();
+        else{S.step=null;S.done=true;S.doneT=0;say('Closed. Patient is stable.',3);}}
       break;}
   }
 }
@@ -2064,23 +2123,24 @@ function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,
   ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
 function woundOpenAt(u){
-  const L=S.L;let cp=1;
-  const inc=S.steps.find(s=>s.t==='incise');
-  if(inc)cp=inc.cp||0;
+  const L=S.L;
+  const inc=S.curInc;
+  const cp=inc?(inc.cp||0):(L.preCut?1:0);
   if(u>cp)return 0;
   let w=Math.pow(Math.sin(Math.min(u/Math.max(cp,.001),1)*Math.PI*.5+ (u/Math.max(cp,1e-4))*0 ),1);
   w=Math.pow(Math.sin(u*Math.PI),.75);
-  const sut=S.steps.find(s=>s.t==='suture'||s.t==='staple');
+  const sut=S.curClose;
   if(sut&&sut.pts){const doneN=sut.pts.filter(p=>p.done).length;
     w*=1-0.92*doneN/sut.pts.length;}
-  const ret=S.steps.find(s=>s.t==='retract');
+  const ret=S.curRet;
   if(ret)w*=1+.45*(ret.prog||0);
   return w*26;
 }
 function drawWound(){
   const L=S.L;
-  const inc=S.steps.find(s=>s.t==='incise');
+  const inc=S.curInc;
   const cp=L.preCut?1:(inc?inc.cp:0);
+  drawScars();
   /* guide line pre-cut — also shown while prepping so you know where to swab.
      HARDCORE: the mark shows only during prep; cutting is from memory. */
   const guideOK=S.D.guide||S.step&&S.step.t==='swab';
@@ -2089,6 +2149,8 @@ function drawWound(){
     ctx.setLineDash([7,7]);
     ctx.strokeStyle=prep?'rgba(20,40,80,.35)':'rgba(20,40,80,.55)';ctx.lineWidth=2;
     ctx.beginPath();PATHP.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+    if(prep&&S.guide2){ /* dual op: both marked lines show during prep */
+      ctx.beginPath();S.guide2.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();}
     ctx.setLineDash([]);
     if(!prep){const s0=pathPt(inc.cp);
       ctx.fillStyle='rgba(70,232,150,.9)';ctx.beginPath();ctx.arc(s0.x,s0.y,5,0,7);ctx.fill();}
@@ -2142,7 +2204,8 @@ function drawWound(){
     ctx.beginPath();ctx.arc(p.x+p.nx*off,p.y+p.ny*off,9,0,7);ctx.fill();}
   drawAnatomy(bone);
   /* beating heart backdrop for cardiac op */
-  if(S.L.organ==='heart')drawOrgan('heart',pathPt(.5).x,pathPt(.5).y+4,1);
+  if(S.L.organ==='heart'&&(!S.L.site2||S.siteNow==='CHEST'))
+    drawOrgan('heart',pathPt(.5).x,pathPt(.5).y+4,1);
   /* step content inside wound */
   const st=S.step;
   if(st){
@@ -2180,7 +2243,7 @@ function drawWound(){
     if((st.t==='extract')&&!st.organ.done)drawOrgan(st.organ.kind,st.organ.x,st.organ.y,1);
   }
   /* placed organs stay visible in the cavity for the rest of the op */
-  S.steps.forEach(sx=>{if(sx.t==='place'&&sx.organ&&sx.organ.done)
+  S.steps.forEach(sx=>{if(sx.t==='place'&&sx.organ&&sx.organ.done&&!sx.organ.hidden)
     drawOrgan(sx.organ.kind,sx.organ.x,sx.organ.y,1);});
   ctx.restore();
   /* wound edge highlight */
@@ -2194,7 +2257,7 @@ function drawWound(){
     else drawHemostat(b.x,b.y);
   });
   /* suture markers & thread */
-  const sut=S.steps.find(s=>s.t==='suture'||s.t==='staple');
+  const sut=S.curClose;
   if(sut&&sut.pts){
     const staple=sut.t==='staple';
     sut.pts.forEach(p=>{
@@ -2211,7 +2274,7 @@ function drawWound(){
           ctx.arc(p.x,p.y,9,-Math.PI/2,-Math.PI/2+p.prog*7);ctx.stroke();}}});
   }
   /* retractor hooks hold the wound open */
-  const ret=S.steps.find(s=>s.t==='retract');
+  const ret=S.curRet;
   if(ret&&(ret.prog||0)>0){
     const p=pathPt(.5),w=woundOpenAt(.5)+7;
     [[1,1],[-1,-1]].forEach(([sx2,sy2])=>{
@@ -2240,9 +2303,25 @@ function drawWound(){
     drawOrgan(st2.organ.kind,st2.organ.x,st2.organ.y,1);
   if(st2&&st2.t==='stones')st2.list.forEach(s=>{if((s.grabbed||s.byArm)&&!s.done)drawStone(s.x,s.y,s.r);});
 }
+/* closed first-field incisions stay as stitched scars */
+function drawScars(){
+  for(const sc of S.scars){
+    if(sc.site&&sc.site!==S.siteNow)continue;
+    ctx.strokeStyle='rgba(96,32,34,.8)';ctx.lineWidth=3;
+    ctx.beginPath();sc.pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+    ctx.strokeStyle='rgba(150,60,56,.35)';ctx.lineWidth=7;ctx.stroke();
+    sc.stitches.forEach(p=>{
+      if(sc.staple){ctx.fillStyle='#9aa6aa';
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(.2);
+        ctx.fillRect(-7,-2.5,14,5);ctx.restore();}
+      else{ctx.strokeStyle='#12222c';ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(p.x-6,p.y-7);ctx.lineTo(p.x+6,p.y+7);
+        ctx.moveTo(p.x+6,p.y-7);ctx.lineTo(p.x-6,p.y+7);ctx.stroke();}});
+  }
+}
 /* site anatomy visible through the open wound */
 function drawAnatomy(bone){
-  const site=S.L.site;
+  const site=S.siteNow||S.L.site;
   ctx.save();
   if(site==='ABDOMEN'&&!bone){
     /* intestinal coils */
@@ -2608,7 +2687,7 @@ function drawHUD(){
   ctx.strokeStyle='#1e3038';ctx.beginPath();ctx.moveTo(0,60);ctx.lineTo(W,60);ctx.stroke();
   ctx.textAlign='left';ctx.fillStyle='#cfe3d8';ctx.font='700 16px '+mono;
   ctx.fillText('OP-'+String(S.idx+1).padStart(2,'0')+' · '+S.L.name.toUpperCase(),24,34);
-  let siteTxt=S.L.site+(S.D.label!=='NORMAL'?' · '+S.D.label:'');
+  let siteTxt=(S.siteNow||S.L.site)+(S.L.dual?' · FIELD '+(S.scars.length+1)+'/2':'')+(S.D.label!=='NORMAL'?' · '+S.D.label:'');
   if(S.mod&&S.mod.id)siteTxt+='  ⚑ '+S.mod.id.toUpperCase();
   ctx.fillStyle=S.D.label==='HARDCORE'?'#ff5f6b':'#7fa192';ctx.font='10px '+mono;
   ctx.fillText(siteTxt,24,50);
