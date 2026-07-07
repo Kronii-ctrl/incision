@@ -231,7 +231,7 @@
 <script>
 'use strict';
 /* ============================== SAVE ============================== */
-const defaultSave=()=>({money:500,best:{},diffMode:'normal',gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0,saw:0,laser:0,suction:0,stapler:0,prep:0,retract:0,imaging:0,transfusion:0,defib:0}});
+const defaultSave=()=>({money:500,best:{},diffMode:'normal',gear:{scalpel:0,clamp:0,forceps:0,suture:0,cautery:0,monitor:0,contract:0,robot:0,saw:0,laser:0,suction:0,stapler:0,prep:0,retract:0,imaging:0,transfusion:0,defib:0,nanites:0}});
 let save=defaultSave();
 const $=id=>document.getElementById(id);
 
@@ -337,6 +337,9 @@ const GEAR={
   contract:{label:'OR Contract',tiers:['Standard Slot','Extended Slot','Priority Theatre'],
     prices:[0,800,2600],
     fx:['Scheduled time only.','+30s on every operation.','+60s on every operation.']},
+  nanites:{label:'Nanorobotics',tiers:['No Swarm','NANITE Swarm Mk I','NANITE Swarm Mk II'],
+    prices:[0,14000,28000],
+    fx:['No microscopic help.','Injected at first incision: unclamped bleeders self-seal in ~9s, blood micro-repairs at 0.25%/s. Deactivates for no-robotics patients.','Bleeders self-seal in ~5s, micro-repair 0.5%/s. The swarm works while you work.']},
   robot:{label:'Robotics',tiers:['Human Hands','Assist Arm MK-I','Neurolink Arm'],
     prices:[0,4500,9500],
     fx:['Steady as you are.','Ceiling-rail surgical arm. Press R in theatre; steer with the mouse or WASD/arrows (SHIFT = fine, SPACE = operate). Rock-steady: wider cut tolerance, tissue rarely tears.','Faster servos, near-perfect stability. The arm moves like thought.']},
@@ -386,7 +389,8 @@ function fx(){const g=save.gear;return{
   retDrag:[70,52,36][g.retract],
   scanRange:[190,240,300][g.imaging],scanLock:[28,38,50][g.imaging],scanT:[1,.7,.45][g.imaging],
   regen:[0,.35,.8][g.transfusion],
-  defibZone:[.26,.34,.44][g.defib],defibSpd:[1,.85,.72][g.defib]};}
+  defibZone:[.26,.34,.44][g.defib],defibSpd:[1,.85,.72][g.defib],
+  naniteSeal:[0,9,5][g.nanites||0],naniteRegen:[0,.25,.5][g.nanites||0]};}
 /* difficulty settings */
 const DIFFS={
  easy:    {label:'EASY',    time:1.3, bleed:.7, evt:-1,pay:.75,tol:1.3,guide:true},
@@ -1714,6 +1718,19 @@ function update(dt){
     if(Math.random()<.12)spurt(b.x,b.y,1);}});
   S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
   if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
+  /* nanite swarm: self-seals bleeders, micro-repairs volume */
+  const nanOn=S.F.naniteSeal>0&&!(S.demand&&S.demand.id==='noRobot');
+  if(nanOn&&!S.dead){
+    S.blood=Math.min(100,S.blood+S.F.naniteRegen*dt);
+    S.bleeders.forEach(b=>{
+      if(b.clamped)return;
+      b.age=(b.age||0)+dt;
+      if(b.age>=S.F.naniteSeal){b.clamped=true;
+        for(let i=0;i<8;i++)spark(b.x+rand(-6,6),b.y+rand(-6,6),'#7fffd0');
+        blip(1200,.08,.04,'sine');
+        if(S.alert&&(S.alert.type==='bleeder'||S.alert.type==='burst')&&
+           S.bleeders.every(q=>q.clamped))resolveAlert(true);}});
+  }
   /* transfusion line restores volume once the field is dry */
   if(S.F.regen&&!S.dead&&!S.bleeders.some(b=>!b.clamped)&&S.cutBloodT<=0)
     S.blood=Math.min(100,S.blood+S.F.regen*dt);
@@ -2678,7 +2695,8 @@ function drawMonitor(){
   if(status!=='STABLE'&&Math.sin(S.t*8)<0)ctx.fillStyle='#3a1418';
   ctx.fillText('STATUS: '+status,mx+14,my+238);
   ctx.fillStyle='#7fa192';
-  ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗'+(S.auto?'   AUTO ◉':''),mx+14,my+256);
+  const nanTag=(S.F.naniteSeal>0)?(S.demand&&S.demand.id==='noRobot'?'  NANO ⊘':'  NANO ◉'):'';
+  ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗'+(S.auto?'  AUTO ◉':'')+nanTag,mx+14,my+256);
 }
 function drawHUD(){
   const mono=getComputedStyle(document.body).fontFamily;
