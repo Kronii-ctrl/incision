@@ -879,6 +879,7 @@ addEventListener('keydown',e=>{
   if(e.key==='r'||e.key==='R')toggleRobot();
   if(e.key==='f'||e.key==='F')toggleAuto();
   if(e.key==='g'||e.key==='G')toggleAres();
+  if(e.key==='n'||e.key==='N')toggleNano();
   if(e.key==='m'||e.key==='M'){muted=!muted;if(muted)flatline(false);}
   if(e.key==='Escape'){if(S)abortSurgery();
     else if(DR){stopDrive();show('menu');}
@@ -911,6 +912,14 @@ function toggleAuto(){
   if(!S.auto&&S.autoHeld){S.autoHeld=false;mouse.down=false;onUp();}
   say(S.auto?'AUTOMATION ON — prep, cautery, injections, suction, closure & emergencies are handled'
     :'Automation off — you have the instruments',3);
+}
+function toggleNano(){
+  if(!S||S.dead||S.done)return;
+  if(save.gear.nanites<1){say('No nanite swarm loaded — see the Supply Depot',2.5);return;}
+  if(S.demand&&S.demand.id==='noRobot'){say('This patient forbids machines — the swarm stays offline.',3);return;}
+  S.nano=!S.nano;clickS();
+  say(S.nano?'NANITE SWARM DEPLOYED — sealing bleeders, mending volume'
+    :'Swarm recalled to reservoir.',3);
 }
 const autoTool=id=>{const i=TOOLS.findIndex(t=>t.id===id);if(S.tool!==i)S.tool=i;};
 function autoMove(tx,ty,sp,dt){
@@ -1397,7 +1406,7 @@ function startSurgery(idx,mod,bonusT,demand){
      tearV:F.tearV*((mod&&mod.tear)||1)*D.tol,
      shake:0,organ:null,heartPh:0,cutBloodT:0,robot:false,clampT:0,injT:0,joy:null,
      auto:false,autoHeld:false,autoTgt:null,breathAmp:1,
-     ares:false,qHold:false,qActing:null,qchains:{},
+     ares:false,qHold:false,qActing:null,qchains:{},nano:save.gear.nanites>0,nanoP:[],
      demand:demand||null,violated:false,demWarned:false,robotT:0,minBlood:100,tTot,
      pend:[],seizeT:0,tension:null,stormRe:false,
      curInc:null,curClose:null,curRet:null,scars:[],siteNow:L.site,
@@ -1719,7 +1728,8 @@ function update(dt){
   S.blood-=drain*dt*.55*S.bleedMul*S.F.drain;
   if(S.cutBloodT>0){S.cutBloodT-=dt;S.blood-=dt*1.2*S.bleedMul*S.F.cutBleed;}
   /* nanite swarm: self-seals bleeders, micro-repairs volume */
-  const nanOn=S.F.naniteSeal>0&&!(S.demand&&S.demand.id==='noRobot');
+  const nanBlocked=S.demand&&S.demand.id==='noRobot';
+  const nanOn=S.F.naniteSeal>0&&S.nano&&!nanBlocked;
   if(nanOn&&!S.dead){
     S.blood=Math.min(100,S.blood+S.F.naniteRegen*dt);
     S.bleeders.forEach(b=>{
@@ -2114,6 +2124,7 @@ function draw(){
   ctx.strokeStyle='#153029';ctx.lineWidth=5;roundRect(FX,FY,FW,FH,26);ctx.stroke();
   drawDish();
   drawParticles();
+  if(S.nano&&S.F.naniteSeal>0&&!(S.demand&&S.demand.id==='noRobot'))drawNanites();
   /* tension pneumothorax decompression mark */
   if(S.tension){
     const pu=1+Math.sin(S.t*8)*.18;
@@ -2638,6 +2649,41 @@ function drawDish(){
         drawOrgan(sx.organ.kind,sx.organ.x,sx.organ.y,.9);});}
   ctx.restore();
 }
+function drawNanites(){
+  const P=S.nanoP;
+  const targets=S.bleeders.filter(b=>!b.clamped);
+  /* keep a population of motes; more when there's bleeding to work */
+  const want=90+targets.length*40;
+  while(P.length<want)P.push({x:rand(FX,FX+FW),y:rand(FY,FY+FH),
+    vx:rand(-14,14),vy:rand(-14,14),ph:rand(0,6.28),lock:null});
+  while(P.length>want)P.pop();
+  ctx.save();roundRect(FX,FY,FW,FH,26);ctx.clip();
+  for(const m of P){
+    /* some motes swarm the nearest bleeder, the rest drift */
+    if(targets.length&&Math.random()<.03)m.lock=targets[Math.floor(Math.random()*targets.length)];
+    if(m.lock&&(m.lock.clamped||targets.indexOf(m.lock)<0))m.lock=null;
+    if(m.lock){const dx=m.lock.x-m.x,dy=m.lock.y-m.y,d=Math.hypot(dx,dy)||1;
+      m.vx+=dx/d*90*.016;m.vy+=dy/d*90*.016;}
+    m.vx+=rand(-6,6);m.vy+=rand(-6,6);
+    m.vx*=.9;m.vy*=.9;
+    m.x+=m.vx*.016;m.y+=m.vy*.016;m.ph+=.2;
+    if(m.x<FX||m.x>FX+FW)m.vx*=-1;if(m.y<FY||m.y>FY+FH)m.vy*=-1;
+    m.x=clamp(m.x,FX,FX+FW);m.y=clamp(m.y,FY,FY+FH);
+    const a=.35+Math.sin(m.ph)*.3;
+    ctx.fillStyle=`rgba(127,255,208,${a})`;
+    ctx.fillRect(m.x,m.y,1.6,1.6);
+  }
+  /* a brighter halo working over each active bleeder */
+  ctx.globalCompositeOperation='lighter';
+  for(const b of targets){
+    const r=10+Math.sin(S.t*7+b.x)*3;
+    const g=ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,r+8);
+    g.addColorStop(0,'rgba(127,255,208,.5)');g.addColorStop(1,'rgba(127,255,208,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(b.x,b.y,r+8,0,7);ctx.fill();
+  }
+  ctx.globalCompositeOperation='source-over';
+  ctx.restore();
+}
 function drawParticles(){
   /* droplets streak along their velocity — reads as real spatter */
   ctx.lineCap='round';
@@ -2695,7 +2741,7 @@ function drawMonitor(){
   if(status!=='STABLE'&&Math.sin(S.t*8)<0)ctx.fillStyle='#3a1418';
   ctx.fillText('STATUS: '+status,mx+14,my+238);
   ctx.fillStyle='#7fa192';
-  const nanTag=(S.F.naniteSeal>0)?(S.demand&&S.demand.id==='noRobot'?'  NANO ⊘':'  NANO ◉'):'';
+  const nanTag=(S.F.naniteSeal>0)?(S.demand&&S.demand.id==='noRobot'?'  NANO ⊘':S.nano?'  NANO ◉':'  NANO ○ [N]'):'';
   ctx.fillText('EVENTS '+S.handled+'✓ '+S.missed+'✗'+(S.auto?'  AUTO ◉':'')+nanTag,mx+14,my+256);
 }
 function drawHUD(){
